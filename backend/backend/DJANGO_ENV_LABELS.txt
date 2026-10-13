@@ -1,0 +1,13 @@
+# Django backend .env labels (copy these into my_project/backend/.env)
+DEBUG=True
+SECRET_KEY=
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_BOOKING_TABLE=core_booking
+SUPABASE_TIMESLOT_TABLE=core_timeslot
+
+# Use one AI provider or both
+GROQ_API_KEY=
+HF_API_KEY=

@@ -1,0 +1,7 @@
+# Flutter .env labels (copy these into my_project/.env)
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+
+# Optional when overriding backend URL at run time
+# flutter run --dart-define=BACKEND_URL=http://10.0.2.2:8000
+# flutter run -d chrome --dart-define=BACKEND_URL=http://127.0.0.1:8000

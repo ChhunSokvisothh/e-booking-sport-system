@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
 import '../booking/booking_providers.dart';
 import '../facility/facility_providers.dart';
 

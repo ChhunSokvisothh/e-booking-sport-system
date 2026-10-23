@@ -5,10 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../../core/app_transitions.dart';
-import '../../core/auth_session.dart';
-import '../../core/file_download.dart';
-import '../../core/models.dart';
+import '../../shared/ui/app_transitions.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/platform/file_download.dart';
+import '../../shared/models/models.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../booking/booking_providers.dart';

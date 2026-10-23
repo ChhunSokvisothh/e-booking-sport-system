@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../../core/app_transitions.dart';
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
-import '../../core/sport_visuals.dart';
+import '../../shared/ui/app_transitions.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
+import '../../shared/ui/sport_visuals.dart';
 import '../facility/facility_providers.dart';
 import '../auth/auth_screen.dart';
 import 'booking_providers.dart';
@@ -293,7 +293,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
 
     final session = ref.watch(authSessionProvider);
     final bookings = ref.watch(bookingHistoryProvider);
-    final facilities = ref.watch(facilityListProvider).valueOrNull ?? const <Facility>[];
+    final facilities = ref.watch(facilityListProvider).value ?? const <Facility>[];
 
     if (session == null) {
       return Center(

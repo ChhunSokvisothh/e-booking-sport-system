@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:intl/intl.dart';
 
-import '../../core/models.dart';
+import '../../shared/models/models.dart';
 
 String bookingReceiptId(BookingItem booking) {
   final datePart = DateFormat('yyyyMMdd').format(booking.startAt.toLocal());

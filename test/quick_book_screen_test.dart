@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:my_project/core/api_client.dart';
+import 'package:my_project/shared/network/api_client.dart';
 import 'package:my_project/features/booking/quick_book_screen.dart';
 import 'package:my_project/features/facility/facility_providers.dart';
 
@@ -30,7 +30,7 @@ Widget _buildSubject({required ApiClient client}) {
 
 Widget _buildSubjectWithOverrides({
   required ApiClient client,
-  required List<Override> overrides,
+  required List<dynamic> overrides,
 }) {
   return ProviderScope(
     overrides: [

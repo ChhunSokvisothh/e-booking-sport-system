@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth_controller.dart';
 import '../booking/home_shell.dart';
 import '../owner/owner_home_shell.dart';
-import '../../core/auth_session.dart';
+import 'data/auth_session.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});

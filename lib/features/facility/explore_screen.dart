@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_transitions.dart';
-import '../../core/models.dart';
-import '../../core/sport_visuals.dart';
+import '../../shared/ui/app_transitions.dart';
+import '../../shared/models/models.dart';
+import '../../shared/ui/sport_visuals.dart';
 import '../booking/quick_book_screen.dart';
 import 'facility_providers.dart';
 

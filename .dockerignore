@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.*
+backend/.env
+backend/env
+backend/venv
+.dart_tool
+.idea
+build
+coverage
+node_modules
+**/__pycache__
+**/*.py[cod]

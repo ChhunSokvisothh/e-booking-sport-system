@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/api_client.dart';
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
-import '../../core/sport_visuals.dart';
+import '../../shared/network/api_client.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
+import '../../shared/ui/sport_visuals.dart';
 import '../facility/facility_providers.dart';
 import 'booking_providers.dart';
 import 'mock_payment_screen.dart';
@@ -99,28 +99,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
   }
 
   Future<int> _createPendingBooking(ApiClient api, String token, LiveSlotAvailability slot) async {
-    final basePrice = slot.basePricePerHour;
-    final suggestion = {
-      'option_id': '${slot.facilityId}:${slot.slotId}:1',
-      'facility_name': slot.facilityName,
-      'start_at': slot.startAt.toIso8601String(),
-      'duration_hours': 1,
-      'base_price': basePrice.toStringAsFixed(2),
-      'weather_discount': '0.00',
-      'empty_slot_discount': '0.00',
-      'final_price': basePrice.toStringAsFixed(2),
-      'currency': 'USD',
-      'rain_mm': 0,
-    };
-
     final result = await api.postJson(
-      '/api/chat/',
-      {
-        'message': 'confirm',
-        'booking_source': 'manual',
-        'selected_option_id': suggestion['option_id'],
-        'suggestions': [suggestion],
-      },
+      '/api/bookings/manual/',
+      {'slot_id': slot.slotId},
       token: token,
     );
 

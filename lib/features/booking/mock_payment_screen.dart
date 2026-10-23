@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
 import '../facility/facility_providers.dart';
 import 'booking_providers.dart';
 
@@ -444,7 +444,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                         ),
                                 ),
                                 onSubmitted: (value) {
-                                  final coupons = couponsAsync.valueOrNull ?? const <CouponItem>[];
+                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
                                   final found = _findCouponByCode(coupons, value);
                                   if (found != null) {
                                     _applyCoupon(found);
@@ -458,7 +458,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
                                   onPressed: () {
-                                    final coupons = couponsAsync.valueOrNull ?? const <CouponItem>[];
+                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
                                     final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
                                     if (found != null) {
                                       _applyCoupon(found);
@@ -492,7 +492,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                           ),
                                   ),
                                   onSubmitted: (value) {
-                                    final coupons = couponsAsync.valueOrNull ?? const <CouponItem>[];
+                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
                                     final found = _findCouponByCode(coupons, value);
                                     if (found != null) {
                                       _applyCoupon(found);
@@ -505,7 +505,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                               const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed: () {
-                                  final coupons = couponsAsync.valueOrNull ?? const <CouponItem>[];
+                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
                                   final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
                                   if (found != null) {
                                     _applyCoupon(found);

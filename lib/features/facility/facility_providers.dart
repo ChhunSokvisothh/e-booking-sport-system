@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/api_client.dart';
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
+import '../../shared/network/api_client.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
 
 class FetchResult<T> {
   const FetchResult({required this.data, required this.durationMs});

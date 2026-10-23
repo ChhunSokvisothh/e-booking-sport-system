@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/auth_session.dart';
+import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
 import '../facility/facility_providers.dart';
 

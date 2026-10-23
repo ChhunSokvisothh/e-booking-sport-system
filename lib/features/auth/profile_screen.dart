@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/auth_session.dart';
+import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
@@ -115,7 +115,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final tiny = width < 360;
     final session = ref.watch(authSessionProvider);
-    final bookings = ref.watch(bookingHistoryProvider).valueOrNull ?? const [];
+    final bookings = ref.watch(bookingHistoryProvider).value ?? const [];
     final isGuest = session == null;
     final email = session?.email ?? 'guest@player.local';
     final effectiveName = _displayNameController.text.trim().isEmpty ? email.split('@').first : _displayNameController.text.trim();

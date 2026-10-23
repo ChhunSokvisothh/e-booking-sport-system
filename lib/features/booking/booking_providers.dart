@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
 import '../facility/facility_providers.dart';
 
 final bookingHistoryProvider = FutureProvider<List<BookingItem>>((ref) async {

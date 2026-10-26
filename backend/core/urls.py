@@ -5,6 +5,7 @@ from .views import (
     BookingViewSet,
     FacilityViewSet,
     TimeSlotViewSet,
+    admin_set_role_endpoint,
     auth_login,
     auth_logout,
     auth_me,
@@ -45,4 +46,5 @@ urlpatterns = [
     path('api/facilities/owner/<int:facility_id>/', owner_facility_detail_endpoint, name='owner-facility-detail-endpoint'),
     path('api/bookings/<int:booking_id>/cancel/', cancel_booking_endpoint, name='booking-cancel'),
     path('api/', include(router.urls)),
+    path('api/admin/set-role/', admin_set_role_endpoint, name='admin-set-role'),
 ]

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/models.dart';
-import '../../core/sport_visuals.dart';
+import '../../shared/models/models.dart';
+import '../../shared/ui/sport_visuals.dart';
 
 class VenueDetailScreen extends StatelessWidget {
   const VenueDetailScreen({

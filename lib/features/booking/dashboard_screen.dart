@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
-import '../../core/sport_visuals.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
+import '../../shared/ui/sport_visuals.dart';
 import 'booking_providers.dart';
 import '../facility/favorite_facility_provider.dart';
 import '../facility/facility_providers.dart';
@@ -75,7 +75,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final session = ref.watch(authSessionProvider);
     final displayName = _buildDisplayName(session);
 
-    final coupons = activeCouponsAsync.valueOrNull ?? const <CouponItem>[];
+    final coupons = activeCouponsAsync.value ?? const <CouponItem>[];
     CouponItem? topCoupon;
     for (final coupon in coupons) {
       if (topCoupon == null || coupon.discountPercent > topCoupon.discountPercent) {

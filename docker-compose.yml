@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+        SUPABASE_URL: ${SUPABASE_URL:-https://mshlkftavsanupfumngs.supabase.co}
+        SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zaGxrZnRhdnNhbnVwZnVtbmdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODEzNDMsImV4cCI6MjA4OTU1NzM0M30.vZAW8f8AlkEGCNDQF_pRjdH15JkUweBBef2nv-Uw2dc}
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

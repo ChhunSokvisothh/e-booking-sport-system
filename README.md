@@ -6,12 +6,27 @@ A Flutter mobile application for booking sports facilities integrated with a Dja
 
 ```
 my_project/
-├── lib/                    # Flutter application code
-├── backend/               # Django REST API server
+├── lib/
+│   ├── app/               # Application shell and global theme
+│   ├── features/          # Feature-owned screens, state, and data access
+│   └── shared/            # Cross-feature models, platform, network, and UI helpers
+├── backend/
+│   ├── config/            # Django project configuration
+│   ├── core/              # Existing persistence app and compatibility boundary
+│   ├── features/          # Feature-owned API routing and utilities
+│   └── global_utils/      # Reusable backend helpers shared across features
 ├── android/               # Android native configuration
 ├── ios/                   # iOS native configuration
 └── web/                   # Web platform configuration
 ```
+
+The frontend follows a feature-first structure. Code used by one feature stays
+under `lib/features/<feature>`, while reusable infrastructure belongs under
+`lib/shared`. The backend keeps the existing `core` Django app as the model and
+migration boundary, while its HTTP routes are organized under
+`backend/features/<feature>` without changing API paths or database table names.
+Feature-local reusable functions live under each feature's `utils` directory;
+cross-feature helpers live under `backend/global_utils`.
 
 ## Prerequisites
 
@@ -133,6 +148,30 @@ flutter run -d chrome        # Web
 flutter run -d android      # Android emulator
 flutter run -d ios          # iOS simulator
 ```
+
+### Docker
+
+The backend uses a small Python Alpine image and the Flutter web app uses a
+multi-stage build with an Nginx Alpine runtime image. The Flutter SDK remains
+in the builder image because the official Flutter toolchain is not distributed
+as an Alpine image.
+
+Create `backend/.env` from `backend/.env.example`, then build and start both
+services:
+
+```bash
+docker compose up --build
+```
+
+The Django API is available at `http://localhost:8000` and the Flutter web app
+at `http://localhost:8080`. Frontend build arguments can be supplied through
+the root environment, for example `BACKEND_URL`, `SUPABASE_URL`, and
+`SUPABASE_ANON_KEY`.
+
+The reusable backend helpers are grouped under
+`backend/global_utils/` by responsibility. `view_helpers.py` remains a
+backward-compatible export module for existing feature imports; new helpers
+should be added to the focused module that owns the behavior.
 
 ## ✅ Verify Setup
 

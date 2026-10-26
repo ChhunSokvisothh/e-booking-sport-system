@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../../core/models.dart';
+import '../../shared/models/models.dart';
 import 'booking_providers.dart';
 import 'booking_receipt_utils.dart';
 

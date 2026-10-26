@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../features/auth/auth_gate.dart';
 
 class EBookingApp extends StatelessWidget {
@@ -12,7 +13,6 @@ class EBookingApp extends StatelessWidget {
       brightness: Brightness.light,
     );
     final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme() as TextTheme;
-
 
     return MaterialApp(
       title: 'E-Booking Sports',

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/auth_session.dart';
+import 'data/auth_session.dart';
 import '../booking/home_shell.dart';
 import '../owner/owner_home_shell.dart';
 

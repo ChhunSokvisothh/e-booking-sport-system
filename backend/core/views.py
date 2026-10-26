@@ -21,7 +21,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from supabase import Client, create_client
 
-from .models import Booking, BookingSource, BookingStatus, Coupon, Facility, PaymentStatus, Profile, SportType, TimeSlot
+from .models import Booking, BookingSource, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
 from .serializers import BookingSerializer, CouponSerializer, FacilitySerializer, TimeSlotSerializer
 
 
@@ -57,20 +57,11 @@ def _facility_is_within_owner_retention(facility, now=None):
 
 
 def _role_for_user(user):
-    if not user or not user.is_authenticated:
-        return 'anon'
-    if user.is_superuser:
-        return 'superadmin'
-    profile, _ = Profile.objects.get_or_create(user=user)
-    return profile.role
+    return 'owner' if (user.is_staff or user.is_superuser) else 'user'
 
 
 def _is_owner_user(user):
-    return _role_for_user(user) in ('owner', 'admin', 'superadmin')
-
-
-def _is_admin_user(user):
-    return _role_for_user(user) in ('admin', 'superadmin')
+    return bool(user and (user.is_staff or user.is_superuser))
 
 
 class FacilityPagination(PageNumberPagination):
@@ -359,7 +350,7 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if not _is_owner_user(self.request.user):
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
             user_uuid = _uuid_from_user(self.request.user)
             _release_expired_pending_bookings(user_uuid=user_uuid)
             qs = qs.filter(user_id=user_uuid)
@@ -4218,7 +4209,7 @@ def owner_facility_detail_endpoint(request, facility_id):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def owner_coupons_endpoint(request):
-    if not _is_owner_user(request.user):
+    if not (request.user.is_staff or request.user.is_superuser):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
@@ -4287,7 +4278,7 @@ def owner_coupons_endpoint(request):
 @api_view(['PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def owner_coupon_detail_endpoint(request, coupon_id):
-    if not _is_owner_user(request.user):
+    if not (request.user.is_staff or request.user.is_superuser):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
@@ -4328,28 +4319,3 @@ def owner_coupon_detail_endpoint(request, coupon_id):
             'retention_days': COUPON_ARCHIVE_RETENTION_DAYS,
         }
     )
-    
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def admin_set_role_endpoint(request):
-    if not _is_admin_user(request.user):
-        return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
-
-    email = (request.data.get('email') or '').strip().lower()
-    new_role = (request.data.get('role') or '').strip()
-    if new_role not in ('user', 'owner', 'admin'):
-        return Response({'error': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        target = User.objects.get(username=email)
-    except User.DoesNotExist:
-        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    if target.is_superuser:
-        return Response({'error': 'Cannot change a superadmin.'}, status=status.HTTP_403_FORBIDDEN)
-
-    if (new_role == 'admin' or _role_for_user(target) == 'admin') and not request.user.is_superuser:
-        return Response({'error': 'Only a superadmin can manage admins.'}, status=status.HTTP_403_FORBIDDEN)
-
-    Profile.objects.update_or_create(user=target, defaults={'role': new_role})
-    return Response({'email': email, 'role': new_role})

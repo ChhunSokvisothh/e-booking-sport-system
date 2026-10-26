@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/auth_session.dart';
-import '../../core/models.dart';
+import '../auth/data/auth_session.dart';
+import '../../shared/models/models.dart';
 import '../auth/profile_screen.dart';
 import '../auth/auth_screen.dart';
 import '../chatbot/chatbot_sheet.dart';

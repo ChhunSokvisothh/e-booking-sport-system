@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
-  static const String _backendUrlFromEnv = String.fromEnvironment('BACKEND_URL', defaultValue: '');
+  static const String _backendUrl = String.fromEnvironment('BACKEND_URL', defaultValue: '');
+  static const String _apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
   static String get backendBaseUrl {
-    final configured = _backendUrlFromEnv.trim();
+    final configured = (_backendUrl.isNotEmpty ? _backendUrl : _apiBaseUrl).trim();
     if (configured.isNotEmpty) {
       return configured.endsWith('/') ? configured.substring(0, configured.length - 1) : configured;
     }

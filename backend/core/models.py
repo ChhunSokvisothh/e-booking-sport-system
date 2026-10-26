@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 
 
 class SportType(models.TextChoices):
@@ -248,3 +249,8 @@ class Coupon(models.Model):
 
     def __str__(self):
         return f'{self.code} ({self.discount_percent}% )'
+
+class Profile(models.Model):
+    ROLE_CHOICES = [('user', 'User'), ('owner', 'Owner'), ('admin', 'Admin')]
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')

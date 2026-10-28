@@ -1,8 +1,10 @@
 from django.contrib import admin
 
-from .models import Booking, Facility, OwnerApplication, OwnerSubscription, TimeSlot
+from .models import Booking, Campus, CampusPhoto, Facility, OwnerApplication, OwnerSubscription, TimeSlot
 
 admin.site.register(Facility)
+admin.site.register(Campus)
+admin.site.register(CampusPhoto)
 admin.site.register(TimeSlot)
 admin.site.register(Booking)
 

@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('reviewed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reviewed_owner_applications', to=settings.AUTH_USER_MODEL)),
             ],
-            options={'ordering': ['-created_at'], 'indexes': [models.Index(fields=['user_id', 'status'], name='core_ownerapp_user_st_idx')]},
+            options={'ordering': ['-created_at']},
         ),
         migrations.CreateModel(
             name='OwnerSubscription',
@@ -52,6 +52,6 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('application', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to='core.ownerapplication')),
             ],
-            options={'ordering': ['-created_at'], 'indexes': [models.Index(fields=['user_id', 'status', 'expires_at'], name='core_ownersub_user_st_exp_idx')]},
+            options={'ordering': ['-created_at']},
         ),
     ]

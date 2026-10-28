@@ -1,4 +1,8 @@
 from decimal import Decimal
+import hashlib
+import hmac
+import json
+import os
 
 from django.db import models
 from django.utils import timezone
@@ -534,6 +538,75 @@ def owner_payment_confirm_endpoint(request):
     return Response({
         'error': 'Client-side payment confirmation is disabled. Configure a payment provider webhook to verify payment server-side.'
     }, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def owner_payment_webhook_endpoint(request):
+    # Generic signed webhook contract; adapt the event mapping to the selected payment provider.
+    secret = os.getenv('OWNER_PAYMENT_WEBHOOK_SECRET', '')
+    if not secret:
+        return Response({'error': 'Owner payment webhook is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    signature = request.headers.get('X-Owner-Payment-Signature', '')
+    expected = 'sha256=' + hmac.new(secret.encode('utf-8'), request.body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return Response({'error': 'Invalid webhook signature.'}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return Response({'error': 'Invalid JSON payload.'}, status=status.HTTP_400_BAD_REQUEST)
+    if payload.get('event') != 'payment.succeeded':
+        return Response({'ok': True, 'ignored': True})
+    try:
+        subscription_id = int(payload.get('subscription_id'))
+        reference = str(payload.get('payment_reference') or '').strip()
+        paid_amount = Decimal(str(payload.get('amount'))).quantize(Decimal('0.01'))
+        currency = str(payload.get('currency') or '').upper()
+    except Exception:
+        return Response({'error': 'Missing or invalid payment fields.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not reference or currency != 'USD':
+        return Response({'error': 'Payment reference and USD currency are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        try:
+            subscription = OwnerSubscription.objects.select_for_update().select_related('application').get(pk=subscription_id)
+        except OwnerSubscription.DoesNotExist:
+            return Response({'error': 'Subscription not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if subscription.status == OwnerSubscription.Status.ACTIVE:
+            if subscription.payment_reference == reference:
+                return Response({'ok': True, 'already_processed': True})
+            return Response({'error': 'Subscription already activated with another payment reference.'}, status=status.HTTP_409_CONFLICT)
+        if subscription.status != OwnerSubscription.Status.PENDING_PAYMENT:
+            return Response({'error': 'Subscription is not awaiting payment.'}, status=status.HTTP_409_CONFLICT)
+        if paid_amount != subscription.amount or currency != subscription.currency:
+            return Response({'error': 'Verified amount/currency does not match the subscription.'}, status=status.HTTP_400_BAD_REQUEST)
+        if OwnerSubscription.objects.filter(payment_reference=reference).exclude(pk=subscription.pk).exists():
+            return Response({'error': 'Payment reference has already been used.'}, status=status.HTTP_409_CONFLICT)
+
+        now = timezone.now()
+        subscription.status = OwnerSubscription.Status.ACTIVE
+        subscription.payment_reference = reference
+        subscription.started_at = now
+        subscription.expires_at = now + timedelta(days=30)
+        subscription.save(update_fields=['status', 'payment_reference', 'started_at', 'expires_at', 'updated_at'])
+
+        application = subscription.application
+        if not Facility.objects.filter(owner_user_id=subscription.user_id, name=application.campus_name).exists():
+            Facility.objects.create(
+                name=application.campus_name,
+                sport_type=application.sport_type,
+                is_indoor=application.is_indoor,
+                description=application.description,
+                location_name=application.location_name,
+                latitude=application.latitude,
+                longitude=application.longitude,
+                base_price_per_hour=application.base_price_per_hour,
+                image_url=application.image_url,
+                owner_user_id=subscription.user_id,
+                is_active=True,
+            )
+    return Response({'ok': True, 'subscription_id': subscription_id, 'status': 'active'})
+
+
 
 
 @api_view(['GET'])

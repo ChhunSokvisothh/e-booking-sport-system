@@ -5,6 +5,7 @@ import '../../shared/ui/app_transitions.dart';
 import '../../shared/models/models.dart';
 import '../../shared/ui/sport_visuals.dart';
 import '../booking/quick_book_screen.dart';
+import 'campus_detail_screen.dart';
 import 'facility_providers.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
@@ -280,11 +281,34 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       facility: facility,
                       visual: visual,
                       bookedSlotCount: bookedCountByFacility[facility.id.toString()] ?? 0,
-                      onTap: () {
+                      onTap: () async {
+                        if (facility.campusId != null) {
+                          try {
+                            final campus = await ref.read(apiClientProvider).getMap(
+                              '/api/campuses/${facility.campusId}/',
+                            );
+                            if (!context.mounted) return;
+                            await Navigator.of(context).push(
+                              buildSlideFadeRoute(
+                                CampusDetailScreen(
+                                  campus: campus,
+                                  onOpenDashboard: widget.onOpenDashboard,
+                                ),
+                              ),
+                            );
+                            return;
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Could not load campus details. Opening booking instead.')),
+                            );
+                          }
+                        }
                         final matchingSlots = (liveSlotsAsync.asData?.value ?? const <LiveSlotAvailability>[])
                             .where((slot) => slot.facilityId == facility.id.toString())
                             .toList()
                           ..sort((a, b) => a.startAt.compareTo(b.startAt));
+                        if (!context.mounted) return;
                         Navigator.of(context).push(
                           buildSlideFadeRoute(
                             QuickBookScreen(

@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Coupon, Facility, SportType, TimeSlot
+from core.models import Campus, CampusPhoto, Coupon, Facility, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
 from global_utils.view_helpers import (
     COUPON_ARCHIVE_RETENTION_DAYS,
@@ -413,6 +413,9 @@ def owner_application_endpoint(request):
             'location_name': a.location_name, 'sport_type': a.sport_type,
             'is_indoor': a.is_indoor, 'base_price_per_hour': str(a.base_price_per_hour),
             'image_url': a.image_url, 'contact_phone': a.contact_phone,
+            'contact_email': a.contact_email, 'amenities': a.amenities,
+            'opening_hours': a.opening_hours, 'cancellation_policy': a.cancellation_policy,
+            'gallery_image_urls': a.gallery_image_urls,
             'status': a.status, 'admin_note': a.admin_note,
             'created_at': a.created_at, 'reviewed_at': a.reviewed_at,
         } for a in qs])
@@ -429,6 +432,17 @@ def owner_application_endpoint(request):
     sport_type = (request.data.get('sport_type') or '').strip().lower()
     contact_phone = (request.data.get('contact_phone') or '').strip()
     image_url = (request.data.get('image_url') or '').strip()
+    contact_email = (request.data.get('contact_email') or '').strip()
+    amenities = request.data.get('amenities', [])
+    opening_hours = request.data.get('opening_hours', {})
+    cancellation_policy = (request.data.get('cancellation_policy') or '').strip()
+    gallery_image_urls = request.data.get('gallery_image_urls', [])
+    if not isinstance(amenities, list) or not all(isinstance(item, str) for item in amenities):
+        return Response({'error': 'amenities must be a list of strings.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not isinstance(opening_hours, dict):
+        return Response({'error': 'opening_hours must be an object keyed by day.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not isinstance(gallery_image_urls, list) or len(gallery_image_urls) > 20 or not all(isinstance(url, str) and url.startswith(('https://', 'http://')) for url in gallery_image_urls):
+        return Response({'error': 'gallery_image_urls must be a list of up to 20 HTTP(S) image URLs.'}, status=status.HTTP_400_BAD_REQUEST)
     if not campus_name or not description or not location_name:
         return Response({'error': 'campus_name, description and location_name are required.'}, status=status.HTTP_400_BAD_REQUEST)
     if sport_type not in SportType.values:
@@ -450,6 +464,9 @@ def owner_application_endpoint(request):
         location_name=location_name, latitude=latitude, longitude=longitude,
         sport_type=sport_type, is_indoor=is_indoor, base_price_per_hour=price,
         image_url=image_url, contact_phone=contact_phone,
+        contact_email=contact_email, amenities=list(dict.fromkeys(item.strip() for item in amenities if item.strip())),
+        opening_hours=opening_hours, cancellation_policy=cancellation_policy,
+        gallery_image_urls=list(dict.fromkeys(url.strip() for url in gallery_image_urls if url.strip())),
     )
     return Response({
         'id': application.id, 'campus_name': application.campus_name,
@@ -595,8 +612,27 @@ def owner_payment_webhook_endpoint(request):
         subscription.save(update_fields=['status', 'payment_reference', 'started_at', 'expires_at', 'updated_at'])
 
         application = subscription.application
-        if not Facility.objects.filter(owner_user_id=subscription.user_id, name=application.campus_name).exists():
+        campus = Campus.objects.filter(owner_user_id=subscription.user_id, name=application.campus_name).first()
+        if campus is None:
+            campus = Campus.objects.create(
+                owner_user_id=subscription.user_id,
+                name=application.campus_name,
+                description=application.description,
+                address=application.location_name,
+                latitude=application.latitude,
+                longitude=application.longitude,
+                contact_phone=application.contact_phone,
+                contact_email=application.contact_email,
+                cover_image_url=application.image_url,
+                opening_hours=application.opening_hours,
+                amenities=application.amenities,
+                cancellation_policy=application.cancellation_policy,
+            )
+            for index, image_url in enumerate(application.gallery_image_urls):
+                CampusPhoto.objects.create(campus=campus, image_url=image_url, sort_order=index)
+        if not Facility.objects.filter(owner_user_id=subscription.user_id, campus=campus).exists():
             Facility.objects.create(
+                campus=campus,
                 name=application.campus_name,
                 sport_type=application.sport_type,
                 is_indoor=application.is_indoor,

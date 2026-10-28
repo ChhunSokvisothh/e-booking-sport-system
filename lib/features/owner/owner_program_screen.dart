@@ -175,6 +175,8 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
             )),
             if (_subscription?['active'] == true)
               Card(child: ListTile(leading: const Icon(Icons.verified), title: const Text('Owner subscription active'), subtitle: Text('Expires: ${_subscription?['expires_at'] ?? 'not available'}')))
+            else if (_subscription?['status'] == 'pending_payment')
+              const Card(child: ListTile(leading: Icon(Icons.hourglass_top), title: Text('Payment pending'), subtitle: Text('Checkout is recorded, but no payment provider is connected yet. Owner tools remain locked until payment is verified.')))
             else if (!hasOpenApplication) ...[
               const SizedBox(height: 18),
               _sectionTitle('Apply to become an owner'),

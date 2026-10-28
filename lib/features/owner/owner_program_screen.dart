@@ -33,6 +33,8 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
   List<Map<String, dynamic>> _applications = [];
   Map<String, dynamic>? _subscription;
   Map<String, dynamic>? _analytics;
+  Map<String, dynamic>? _campusProfile;
+  bool _profileLoaded = false;
   String? _error;
   static const _sports = <String, String>{
     'football': 'Football', 'futsal': 'Futsal', 'basketball': 'Basketball',
@@ -78,8 +80,33 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
         _subscription = results[1] as Map<String, dynamic>;
       });
       if (_subscription?['active'] == true) {
-        final data = await api.getMap('/api/owner/analytics/', token: session.token);
-        if (mounted) setState(() => _analytics = data);
+        final results = await Future.wait([
+          api.getMap('/api/owner/analytics/', token: session.token),
+          api.getMap('/api/owner/campus/', token: session.token),
+        ]);
+        if (mounted) {
+          final profile = results[1];
+          setState(() {
+            _analytics = results[0];
+            _campusProfile = profile;
+            if (!_profileLoaded) {
+              _campus.text = (profile['name'] ?? '').toString();
+              _description.text = (profile['description'] ?? '').toString();
+              _location.text = (profile['address'] ?? '').toString();
+              _phone.text = (profile['contact_phone'] ?? '').toString();
+              _email.text = (profile['contact_email'] ?? '').toString();
+              _imageUrl.text = (profile['cover_image_url'] ?? '').toString();
+              _amenities.text = (profile['amenities'] as List<dynamic>? ?? const []).join(', ');
+              _openingHours.text = const JsonEncoder.withIndent('  ').convert(profile['opening_hours'] ?? {});
+              _cancellationPolicy.text = (profile['cancellation_policy'] ?? '').toString();
+              _galleryUrls.text = (profile['photos'] as List<dynamic>? ?? const [])
+                  .whereType<Map<String, dynamic>>()
+                  .map((photo) => (photo['image_url'] ?? '').toString())
+                  .join('\n');
+              _profileLoaded = true;
+            }
+          });
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -129,6 +156,48 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
       }, token: session.token);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Application submitted for review.')));
+      await _refresh();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveCampusProfile() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null) return;
+    Map<String, dynamic> openingHours;
+    try {
+      final decoded = jsonDecode(_openingHours.text.trim().isEmpty ? '{}' : _openingHours.text.trim());
+      if (decoded is! Map<String, dynamic>) throw const FormatException();
+      openingHours = decoded;
+    } on FormatException {
+      setState(() => _error = 'Opening hours must be a valid JSON object.');
+      return;
+    }
+    final galleryUrls = _galleryUrls.text
+        .split(RegExp(r'[,\n]'))
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
+        .toSet()
+        .toList();
+    setState(() { _busy = true; _error = null; });
+    try {
+      await ref.read(apiClientProvider).patchJson('/api/owner/campus/', {
+        'name': _campus.text.trim(),
+        'description': _description.text.trim(),
+        'address': _location.text.trim(),
+        'contact_phone': _phone.text.trim(),
+        'contact_email': _email.text.trim(),
+        'cover_image_url': _imageUrl.text.trim(),
+        'gallery_image_urls': galleryUrls,
+        'amenities': _amenities.text.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toSet().toList(),
+        'opening_hours': openingHours,
+        'cancellation_policy': _cancellationPolicy.text.trim(),
+      }, token: session.token);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Campus page updated.')));
       await _refresh();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -194,6 +263,25 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
               const SizedBox(height: 16),
               _sectionTitle('Owner analytics'),
               _metricGrid(_analytics ?? const {}),
+              const SizedBox(height: 20),
+              _sectionTitle('Your public campus page'),
+              const Text('These details appear to customers before they choose a court. Add real photos and only list amenities your venue actually provides.'),
+              const SizedBox(height: 12),
+              _field(_campus, 'Campus name'),
+              _field(_description, 'Campus description', maxLines: 4),
+              _field(_location, 'Full address'),
+              _field(_phone, 'Contact phone', required: false, keyboardType: TextInputType.phone),
+              _field(_email, 'Contact email', required: false, keyboardType: TextInputType.emailAddress),
+              _field(_imageUrl, 'Cover image URL', required: false, keyboardType: TextInputType.url),
+              _field(_galleryUrls, 'Gallery image URLs (comma or newline separated)', required: false, maxLines: 3, keyboardType: TextInputType.multiline),
+              _field(_amenities, 'Amenities (comma separated)', required: false, maxLines: 2, keyboardType: TextInputType.multiline),
+              _field(_openingHours, 'Opening hours (JSON object)', required: false, maxLines: 3, keyboardType: TextInputType.multiline),
+              _field(_cancellationPolicy, 'Cancellation policy', required: false, maxLines: 3),
+              SizedBox(width: double.infinity, child: FilledButton.icon(
+                onPressed: _busy ? null : _saveCampusProfile,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save campus page'),
+              )),
             ],
             const SizedBox(height: 18),
             _sectionTitle('Your applications'),

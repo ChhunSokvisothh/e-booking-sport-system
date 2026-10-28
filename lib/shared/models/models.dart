@@ -1,6 +1,7 @@
 class Facility {
   const Facility({
     required this.id,
+    this.campusId,
     required this.name,
     required this.sportType,
     required this.isIndoor,
@@ -16,6 +17,7 @@ class Facility {
   });
 
   final int id;
+  final int? campusId;
   final String name;
   final String sportType;
   final bool isIndoor;
@@ -43,6 +45,7 @@ class Facility {
     final image = (json['image_url'] as String?)?.trim();
     return Facility(
       id: json['id'] as int,
+      campusId: (json['campus'] as num?)?.toInt(),
       name: json['name'] as String,
       sportType: json['sport_type'] as String,
       isIndoor: json['is_indoor'] as bool,

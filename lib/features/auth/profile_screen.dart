@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../owner/owner_program_screen.dart';
+
 import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
 import '../auth/auth_controller.dart';
@@ -536,6 +538,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 subtitle: Text(_cityController.text.trim().isEmpty ? 'Phnom Penh' : _cityController.text.trim(), style: TextStyle(color: cs.onSurfaceVariant)),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.sports_soccer_outlined)),
+            title: const Text('Sports Campus Owner'),
+            subtitle: const Text('Apply to list your venue and unlock owner analytics'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const OwnerProgramScreen()),
+            ),
           ),
         ),
         const SizedBox(height: 10),

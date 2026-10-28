@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,7 +21,12 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
   final _location = TextEditingController();
   final _price = TextEditingController(text: '20');
   final _phone = TextEditingController();
+  final _email = TextEditingController();
   final _imageUrl = TextEditingController();
+  final _galleryUrls = TextEditingController();
+  final _amenities = TextEditingController();
+  final _openingHours = TextEditingController(text: '{"Monday":"6:00 AM - 10:00 PM"}');
+  final _cancellationPolicy = TextEditingController();
   String _sport = 'football';
   bool _indoor = false;
   bool _busy = false;
@@ -46,7 +53,12 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
     _location.dispose();
     _price.dispose();
     _phone.dispose();
+    _email.dispose();
     _imageUrl.dispose();
+    _galleryUrls.dispose();
+    _amenities.dispose();
+    _openingHours.dispose();
+    _cancellationPolicy.dispose();
     super.dispose();
   }
 
@@ -82,6 +94,24 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
     if (session == null) return;
     setState(() { _busy = true; _error = null; });
     try {
+      Map<String, dynamic> openingHours;
+      try {
+        final decodedHours = jsonDecode(_openingHours.text.trim().isEmpty ? '{}' : _openingHours.text.trim());
+        if (decodedHours is! Map<String, dynamic>) {
+          throw const FormatException('Opening hours must be a JSON object.');
+        }
+        openingHours = decodedHours;
+      } on FormatException {
+        if (mounted) setState(() => _error = 'Opening hours must be valid JSON, for example: {"Monday":"6:00 AM - 10:00 PM"}');
+        return;
+      }
+      final galleryUrls = _galleryUrls.text
+          .split(RegExp(r'[,
+]'))
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toSet()
+          .toList();
       await ref.read(apiClientProvider).postJson('/api/owner/applications/', {
         'campus_name': _campus.text.trim(),
         'description': _description.text.trim(),
@@ -90,7 +120,12 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
         'is_indoor': _indoor,
         'base_price_per_hour': _price.text.trim(),
         'contact_phone': _phone.text.trim(),
+        'contact_email': _email.text.trim(),
         'image_url': _imageUrl.text.trim(),
+        'gallery_image_urls': galleryUrls,
+        'amenities': _amenities.text.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toSet().toList(),
+        'opening_hours': openingHours,
+        'cancellation_policy': _cancellationPolicy.text.trim(),
       }, token: session.token);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Application submitted for review.')));
@@ -187,7 +222,12 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
                   _field(_description, 'Campus description', maxLines: 3),
                   _field(_location, 'Full location / address'),
                   _field(_phone, 'Contact phone (optional)', required: false, keyboardType: TextInputType.phone),
-                  _field(_imageUrl, 'Venue image URL (optional)', required: false, keyboardType: TextInputType.url),
+                  _field(_email, 'Contact email (optional)', required: false, keyboardType: TextInputType.emailAddress),
+                  _field(_imageUrl, 'Cover image URL (optional)', required: false, keyboardType: TextInputType.url),
+                  _field(_galleryUrls, 'Gallery image URLs (comma or newline separated)', required: false, maxLines: 3, keyboardType: TextInputType.multiline),
+                  _field(_amenities, 'Amenities (comma separated)', required: false, maxLines: 2, keyboardType: TextInputType.multiline),
+                  _field(_openingHours, 'Opening hours (JSON object)', required: false, maxLines: 3, keyboardType: TextInputType.multiline),
+                  _field(_cancellationPolicy, 'Cancellation policy (optional)', required: false, maxLines: 3),
                   _field(_price, 'Hourly price (USD)', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(

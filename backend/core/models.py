@@ -35,7 +35,46 @@ class BookingSource(models.TextChoices):
     CHATBOT = 'chatbot', 'Chatbot Booking'
 
 
+class Campus(models.Model):
+    owner_user_id = models.UUIDField(db_index=True)
+    name = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    address = models.CharField(max_length=255)
+    latitude = models.FloatField(default=11.5564)
+    longitude = models.FloatField(default=104.9282)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    contact_email = models.EmailField(blank=True)
+    cover_image_url = models.URLField(blank=True)
+    opening_hours = models.JSONField(default=dict, blank=True)
+    amenities = models.JSONField(default=list, blank=True)
+    cancellation_policy = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class CampusPhoto(models.Model):
+    campus = models.ForeignKey(Campus, on_delete=models.CASCADE, related_name='photos')
+    image_url = models.URLField()
+    caption = models.CharField(max_length=160, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f'{self.campus.name} photo #{self.pk}'
+
+
 class Facility(models.Model):
+    campus = models.ForeignKey(Campus, null=True, blank=True, on_delete=models.SET_NULL, related_name='facilities')
     name = models.CharField(max_length=120)
     sport_type = models.CharField(max_length=32, choices=SportType.choices)
     is_indoor = models.BooleanField(default=False)

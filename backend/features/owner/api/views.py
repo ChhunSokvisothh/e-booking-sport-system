@@ -371,3 +371,197 @@ def owner_coupon_detail_endpoint(request, coupon_id):
         }
     )
 
+
+
+# Campus owner program: applications, subscription gating and owner analytics.
+from datetime import timedelta
+from django.db import transaction
+from django.db.models import Sum, Count
+from django.contrib.auth import get_user_model
+from core.models import OwnerApplication, OwnerSubscription, Booking, BookingStatus, PaymentStatus
+
+User = get_user_model()
+OWNER_MONTHLY_PRICE = Decimal('20.00')
+
+
+def _active_owner_subscription(user):
+    owner_uuid = _uuid_from_user(user)
+    return OwnerSubscription.objects.filter(
+        user_id=owner_uuid,
+        status=OwnerSubscription.Status.ACTIVE,
+        expires_at__gt=timezone.now(),
+    ).select_related('application').order_by('-expires_at').first()
+
+
+def _owner_access_allowed(user):
+    return bool(user and (user.is_staff or user.is_superuser or _active_owner_subscription(user)))
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def owner_application_endpoint(request):
+    owner_uuid = _uuid_from_user(request.user)
+    if request.method == 'GET':
+        qs = OwnerApplication.objects.filter(user_id=owner_uuid)
+        return Response([{
+            'id': a.id, 'campus_name': a.campus_name, 'description': a.description,
+            'location_name': a.location_name, 'sport_type': a.sport_type,
+            'is_indoor': a.is_indoor, 'base_price_per_hour': str(a.base_price_per_hour),
+            'image_url': a.image_url, 'contact_phone': a.contact_phone,
+            'status': a.status, 'admin_note': a.admin_note,
+            'created_at': a.created_at, 'reviewed_at': a.reviewed_at,
+        } for a in qs])
+
+    if OwnerApplication.objects.filter(
+        user_id=owner_uuid,
+        status__in=[OwnerApplication.Status.PENDING, OwnerApplication.Status.UNDER_REVIEW, OwnerApplication.Status.APPROVED],
+    ).exists():
+        return Response({'error': 'You already have an application in progress.'}, status=status.HTTP_409_CONFLICT)
+
+    campus_name = (request.data.get('campus_name') or '').strip()
+    description = (request.data.get('description') or '').strip()
+    location_name = (request.data.get('location_name') or '').strip()
+    sport_type = (request.data.get('sport_type') or '').strip().lower()
+    contact_phone = (request.data.get('contact_phone') or '').strip()
+    image_url = (request.data.get('image_url') or '').strip()
+    if not campus_name or not description or not location_name:
+        return Response({'error': 'campus_name, description and location_name are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if sport_type not in SportType.values:
+        return Response({'error': f'sport_type must be one of: {", ".join(SportType.values)}'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        price = Decimal(str(request.data.get('base_price_per_hour'))).quantize(Decimal('0.01'))
+        latitude = float(request.data.get('latitude', 11.5564))
+        longitude = float(request.data.get('longitude', 104.9282))
+    except Exception:
+        return Response({'error': 'Provide a valid hourly price and numeric coordinates.'}, status=status.HTTP_400_BAD_REQUEST)
+    if price <= 0 or not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        return Response({'error': 'Price or coordinates are outside valid ranges.'}, status=status.HTTP_400_BAD_REQUEST)
+    is_indoor = request.data.get('is_indoor', False)
+    if not isinstance(is_indoor, bool):
+        return Response({'error': 'is_indoor must be boolean.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    application = OwnerApplication.objects.create(
+        user_id=owner_uuid, campus_name=campus_name, description=description,
+        location_name=location_name, latitude=latitude, longitude=longitude,
+        sport_type=sport_type, is_indoor=is_indoor, base_price_per_hour=price,
+        image_url=image_url, contact_phone=contact_phone,
+    )
+    return Response({
+        'id': application.id, 'campus_name': application.campus_name,
+        'status': application.status,
+        'message': 'Application submitted. Payment becomes available after admin approval.',
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def owner_application_review_endpoint(request, application_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Administrator access required.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        application = OwnerApplication.objects.get(pk=application_id)
+    except OwnerApplication.DoesNotExist:
+        return Response({'error': 'Application not found.'}, status=status.HTTP_404_NOT_FOUND)
+    decision = (request.data.get('decision') or '').strip().lower()
+    note = (request.data.get('admin_note') or '').strip()
+    if decision not in ['approve', 'reject', 'review']:
+        return Response({'error': 'decision must be approve, reject or review.'}, status=status.HTTP_400_BAD_REQUEST)
+    application.admin_note = note
+    application.reviewed_by = request.user
+    application.reviewed_at = timezone.now()
+    application.status = {
+        'approve': OwnerApplication.Status.APPROVED,
+        'reject': OwnerApplication.Status.REJECTED,
+        'review': OwnerApplication.Status.UNDER_REVIEW,
+    }[decision]
+    application.save(update_fields=['admin_note', 'reviewed_by', 'reviewed_at', 'status', 'updated_at'])
+    return Response({'id': application.id, 'status': application.status, 'admin_note': application.admin_note})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def owner_subscription_endpoint(request):
+    subscription = _active_owner_subscription(request.user)
+    if subscription:
+        return Response({
+            'active': True, 'status': subscription.status, 'plan': subscription.plan,
+            'amount': str(subscription.amount), 'currency': subscription.currency,
+            'expires_at': subscription.expires_at, 'campus_name': subscription.application.campus_name,
+        })
+    latest = OwnerSubscription.objects.filter(user_id=_uuid_from_user(request.user)).order_by('-created_at').first()
+    return Response({
+        'active': False,
+        'status': latest.status if latest else 'not_subscribed',
+        'amount': str(latest.amount) if latest else str(OWNER_MONTHLY_PRICE),
+        'currency': 'USD',
+        'expires_at': latest.expires_at if latest else None,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def owner_checkout_endpoint(request):
+    owner_uuid = _uuid_from_user(request.user)
+    try:
+        application = OwnerApplication.objects.get(
+            pk=request.data.get('application_id'),
+            user_id=owner_uuid,
+            status=OwnerApplication.Status.APPROVED,
+        )
+    except (OwnerApplication.DoesNotExist, ValueError, TypeError):
+        return Response({'error': 'Only an approved application can start checkout.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    subscription = OwnerSubscription.objects.create(
+        application=application, user_id=owner_uuid,
+        plan='monthly', amount=OWNER_MONTHLY_PRICE, currency='USD',
+        status=OwnerSubscription.Status.PENDING_PAYMENT,
+    )
+    # This is a pending checkout record, not a payment success. Integrate a real provider before production.
+    return Response({
+        'subscription_id': subscription.id,
+        'amount': str(subscription.amount), 'currency': subscription.currency,
+        'status': subscription.status,
+        'payment_mode': 'manual_test',
+        'message': 'Checkout record created. Owner access is not enabled until payment is verified.',
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def owner_payment_confirm_endpoint(request):
+    # Deliberately disabled: the client must never be allowed to declare its own payment successful.
+    return Response({
+        'error': 'Client-side payment confirmation is disabled. Configure a payment provider webhook to verify payment server-side.'
+    }, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def owner_analytics_endpoint(request):
+    if not _owner_access_allowed(request.user):
+        return Response({'error': 'An approved application and active subscription are required.'}, status=status.HTTP_403_FORBIDDEN)
+    owner_uuid = _uuid_from_user(request.user)
+    facilities = Facility.objects.filter(owner_user_id=owner_uuid, archived_at__isnull=True)
+    bookings = Booking.objects.filter(facility__in=facilities).exclude(status=BookingStatus.CANCELLED)
+    paid_bookings = bookings.filter(payment_status=PaymentStatus.MOCK_PAID)
+    by_facility = list(bookings.values('facility_id', 'facility__name').annotate(
+        bookings=Count('id'), revenue=Sum('final_price')
+    ).order_by('-bookings')[:10])
+    peak_hours = list(bookings.extra(select={'hour': "EXTRACT(HOUR FROM start_at)"}).values('hour').annotate(
+        bookings=Count('id')
+    ).order_by('-bookings')[:8])
+    return Response({
+        'campus_count': OwnerApplication.objects.filter(user_id=owner_uuid, status=OwnerApplication.Status.APPROVED).count(),
+        'facility_count': facilities.count(),
+        'booking_count': bookings.count(),
+        'paid_booking_count': paid_bookings.count(),
+        'revenue': str(paid_bookings.aggregate(total=Sum('final_price'))['total'] or Decimal('0.00')),
+        'top_facilities': [{
+            'facility_id': row['facility_id'], 'name': row['facility__name'],
+            'bookings': row['bookings'], 'revenue': str(row['revenue'] or Decimal('0.00')),
+        } for row in by_facility],
+        'peak_hours': peak_hours,
+        'revenue_note': 'Uses the current mock booking payment status; verify production payments before treating this as settled revenue.',
+    })
+
+

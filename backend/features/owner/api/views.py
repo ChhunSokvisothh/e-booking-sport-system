@@ -49,8 +49,8 @@ def owner_facilities_endpoint(request):
         archived_to_raw = (request.query_params.get('archived_to') or '').strip()
         archive_cutoff = _facility_archive_cutoff(now)
         owner_scope = Facility.objects.all()
-        if not request.user.is_superuser:
-            owner_scope = owner_scope.filter(models.Q(owner_user_id=owner_uuid) | models.Q(owner_user_id__isnull=True))
+        if not (request.user.is_staff or request.user.is_superuser):
+            owner_scope = owner_scope.filter(owner_user_id=owner_uuid)
 
         # Purge archived facilities older than retention window when they have no bookings.
         stale_ids = list(
@@ -156,7 +156,7 @@ def owner_facility_detail_endpoint(request, facility_id):
         return Response({'error': 'Facility not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     owner_uuid = _uuid_from_user(request.user)
-    if facility.owner_user_id and (facility.owner_user_id != owner_uuid) and (not request.user.is_superuser):
+    if not (request.user.is_staff or request.user.is_superuser) and facility.owner_user_id != owner_uuid:
         return Response({'error': 'You can only edit your own venues.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'DELETE':
@@ -377,6 +377,7 @@ def owner_coupon_detail_endpoint(request, coupon_id):
 from datetime import timedelta
 from django.db import transaction
 from django.db.models import Sum, Count
+from django.db.models.functions import ExtractHour
 from django.contrib.auth import get_user_model
 from core.models import OwnerApplication, OwnerSubscription, Booking, BookingStatus, PaymentStatus
 
@@ -547,7 +548,7 @@ def owner_analytics_endpoint(request):
     by_facility = list(bookings.values('facility_id', 'facility__name').annotate(
         bookings=Count('id'), revenue=Sum('final_price')
     ).order_by('-bookings')[:10])
-    peak_hours = list(bookings.extra(select={'hour': "EXTRACT(HOUR FROM start_at)"}).values('hour').annotate(
+    peak_hours = list(bookings.annotate(hour=ExtractHour('start_at')).values('hour').annotate(
         bookings=Count('id')
     ).order_by('-bookings')[:8])
     return Response({

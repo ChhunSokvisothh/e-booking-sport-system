@@ -248,3 +248,67 @@ class Coupon(models.Model):
 
     def __str__(self):
         return f'{self.code} ({self.discount_percent}% )'
+
+
+class OwnerApplication(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending review'
+        UNDER_REVIEW = 'under_review', 'Under review'
+        APPROVED = 'approved', 'Approved - awaiting payment'
+        REJECTED = 'rejected', 'Rejected'
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user_id', 'status'])]
+
+    user_id = models.UUIDField(db_index=True)
+    campus_name = models.CharField(max_length=160)
+    description = models.TextField()
+    location_name = models.CharField(max_length=255)
+    latitude = models.FloatField(default=11.5564)
+    longitude = models.FloatField(default=104.9282)
+    sport_type = models.CharField(max_length=32, choices=SportType.choices)
+    is_indoor = models.BooleanField(default=False)
+    base_price_per_hour = models.DecimalField(max_digits=10, decimal_places=2)
+    image_url = models.URLField(blank=True)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    admin_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_owner_applications')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.campus_name} — {self.status}'
+
+
+class OwnerSubscription(models.Model):
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = 'pending_payment', 'Pending payment'
+        ACTIVE = 'active', 'Active'
+        EXPIRED = 'expired', 'Expired'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    application = models.ForeignKey(OwnerApplication, on_delete=models.PROTECT, related_name='subscriptions')
+    user_id = models.UUIDField(db_index=True)
+    plan = models.CharField(max_length=20, default='monthly')
+    amount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('20.00'))
+    currency = models.CharField(max_length=3, default='USD')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_PAYMENT)
+    payment_reference = models.CharField(max_length=120, blank=True, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user_id', 'status', 'expires_at'])]
+
+    @property
+    def is_current(self):
+        return self.status == self.Status.ACTIVE and self.expires_at is not None and self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f'Owner subscription {self.id} ({self.status})'

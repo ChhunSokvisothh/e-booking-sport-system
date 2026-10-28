@@ -168,7 +168,7 @@ class _OwnerProgramScreenState extends ConsumerState<OwnerProgramScreen> {
                 title: Text((a['campus_name'] ?? 'Campus').toString()),
                 subtitle: Text('Status: ${(a['status'] ?? 'unknown').toString().replaceAll('_', ' ')}${(a['admin_note'] ?? '').toString().isEmpty ? '' : '\nNote: ${a['admin_note']}'}'),
                 isThreeLine: (a['admin_note'] ?? '').toString().isNotEmpty,
-                trailing: a['status'] == 'approved'
+                trailing: a['status'] == 'approved' && _subscription?['active'] != true && _subscription?['status'] != 'pending_payment'
                     ? TextButton(onPressed: _busy ? null : () => _checkout(a['id'] as int), child: const Text('Pay $20/mo'))
                     : null,
               ),

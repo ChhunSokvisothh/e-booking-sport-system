@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.conf import settings
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -259,7 +260,6 @@ class OwnerApplication(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['user_id', 'status'])]
 
     user_id = models.UUIDField(db_index=True)
     campus_name = models.CharField(max_length=160)
@@ -274,7 +274,7 @@ class OwnerApplication(models.Model):
     contact_phone = models.CharField(max_length=40, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     admin_note = models.TextField(blank=True)
-    reviewed_by = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_owner_applications')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_owner_applications')
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -304,7 +304,6 @@ class OwnerSubscription(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['user_id', 'status', 'expires_at'])]
 
     @property
     def is_current(self):

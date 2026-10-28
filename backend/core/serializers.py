@@ -8,6 +8,7 @@ class FacilitySerializer(serializers.ModelSerializer):
         model = Facility
         fields = [
             'id',
+            'campus',
             'name',
             'sport_type',
             'is_indoor',

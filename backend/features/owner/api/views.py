@@ -516,7 +516,12 @@ def owner_checkout_endpoint(request):
     except (OwnerApplication.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Only an approved application can start checkout.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    subscription = OwnerSubscription.objects.create(
+    existing_pending = OwnerSubscription.objects.filter(
+        application=application,
+        user_id=owner_uuid,
+        status=OwnerSubscription.Status.PENDING_PAYMENT,
+    ).order_by('-created_at').first()
+    subscription = existing_pending or OwnerSubscription.objects.create(
         application=application, user_id=owner_uuid,
         plan='monthly', amount=OWNER_MONTHLY_PRICE, currency='USD',
         status=OwnerSubscription.Status.PENDING_PAYMENT,

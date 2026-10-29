@@ -11,7 +11,7 @@ RUN flutter pub get
 COPY . .
 RUN printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\nBACKEND_URL=%s\n' \
         "$SUPABASE_URL" "$SUPABASE_ANON_KEY" "$BACKEND_URL" > .env \
-    && flutter build web --release
+    && flutter build web --release --dart-define=BACKEND_URL="$BACKEND_URL"
 
 FROM nginx:1.29-alpine
 

@@ -34,6 +34,23 @@ class BookingSource(models.TextChoices):
     CHATBOT = 'chatbot', 'Chatbot Booking'
 
 
+class TelegramIdentity(models.Model):
+    telegram_user_id = models.BigIntegerField(unique=True)
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='telegram_identities')
+    username = models.CharField(max_length=255, blank=True)
+    first_name = models.CharField(max_length=255, blank=True)
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+
+class TelegramLoginAttempt(models.Model):
+    token_hash = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=12, default='pending')
+    used = models.BooleanField(default=False)
+    user = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.CASCADE)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Facility(models.Model):
     name = models.CharField(max_length=120)
     sport_type = models.CharField(max_length=32, choices=SportType.choices)

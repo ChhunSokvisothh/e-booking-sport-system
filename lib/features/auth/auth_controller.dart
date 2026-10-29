@@ -83,6 +83,10 @@ class AuthController {
     await _saveSessionFromAuthResponse(result);
   }
 
+  Future<void> saveLoginResponse(Map<String, dynamic> json) async {
+    await _saveSessionFromAuthResponse(json);
+  }
+
   Future<void> logout() async {
     final current = _ref.read(authSessionProvider);
     if (current != null) {

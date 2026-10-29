@@ -33,4 +33,4 @@ RUN DATABASE_URL=sqlite:////tmp/build.sqlite3 python manage.py collectstatic --n
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate && exec gunicorn --bind 0.0.0.0:8000 --workers 2 --access-logfile - config.wsgi:application"]
+CMD ["sh", "-c", "python manage.py migrate && python manage.py register_telegram_webhook && exec gunicorn --bind 0.0.0.0:8000 --workers 2 --access-logfile - config.wsgi:application"]

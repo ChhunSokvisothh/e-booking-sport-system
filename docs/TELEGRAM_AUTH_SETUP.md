@@ -9,14 +9,10 @@ The Telegram button in the app opens @SportsSystemBot with a short-lived, single
 2
    - `TELEGRAM_BOT_TOKEN`: token from BotFather.
    - `TELEGRAM_WEBHOOK_SECRET`: a random secret containing only letters, numbers, underscores, or hyphens. Telegram accepts 1 to 256 characters.
+   - `TELEGRAM_WEBHOOK_URL`: the public HTTPS webhook URL, for example `https://YOUR_BACKEND_HOST/api/auth/telegram/webhook`.
 
-3. Deploy the backend and apply migrations with `python manage.py migrate`.
-4. Register the webhook over HTTPS. Replace the placeholders and send this form to Telegram's Bot API `setWebhook` method:
-
-   - `url`: `https://YOUR_BACKEND_HOST/api/auth/telegram/webhook`
-   - `secret_token`: the same value as `TELEGRAM_WEBHOOK_SECRET`
-
-   For example, use an HTTP POST to `https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook` with `url` and `secret_token` as form fields. Keep the bot token private.
+3. Deploy the backend. Its container startup applies migrations and registers the webhook using `TELEGRAM_WEBHOOK_URL` and `TELEGRAM_WEBHOOK_SECRET`.
+4. If you change the webhook secret or URL, update the backend environment values and redeploy. The startup command will register the new webhook with Telegram. Keep the bot token private.
 
 ## Configure the Flutter app
 

@@ -13,6 +13,8 @@ DEBUG = os.getenv('DEBUG', 'False').lower() in ['1', 'true', 'yes']
 
 # Parse allowed hosts string into a list
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
+if 'ebooking-app.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('ebooking-app.onrender.com')
 
 INSTALLED_APPS = [
     'django.contrib.admin',

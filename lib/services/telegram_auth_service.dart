@@ -21,7 +21,7 @@ class TelegramAuthService {
     _activeClient = null;
   }
 
-  static Future<Map<String, dynamic>> login() async {
+  static Future<Map<String, dynamic>> login({void Function(String code)? onCodeCreated}) async {
     _cancelled = false;
     final client = http.Client();
     _activeClient = client;
@@ -42,6 +42,7 @@ class TelegramAuthService {
       if (code == null || code.isEmpty) {
         throw Exception('Telegram login code was missing.');
       }
+      onCodeCreated?.call(code);
 
       final username = _botUsername.startsWith('@') ? _botUsername.substring(1) : _botUsername;
       final telegramUri = Uri.https('t.me', '/$username', {'start': code});

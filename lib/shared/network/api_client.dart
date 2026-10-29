@@ -110,6 +110,23 @@ class ApiClient {
     throw Exception('Unexpected server response. Please try again.');
   }
 
+  Future<Map<String, dynamic>> getPage(
+    String path, {
+    Map<String, String>? query,
+    String? token,
+  }) async {
+    final response = await _send(
+      () => _client.get(_uri(path, query), headers: _headers(token: token, json: false)),
+      'GET',
+      path,
+    );
+    final decoded = _decodeBody(response, 'GET', path);
+    if (decoded is Map<String, dynamic> && decoded['results'] is List<dynamic>) {
+      return decoded;
+    }
+    throw Exception('Unexpected paginated server response. Please try again.');
+  }
+
   Future<Map<String, dynamic>> getMap(String path, {Map<String, String>? query, String? token}) async {
     final response = await _send(
       () => _client.get(_uri(path, query), headers: _headers(token: token, json: false)),

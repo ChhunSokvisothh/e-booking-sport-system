@@ -2,6 +2,7 @@ from django.urls import path
 
 from features.owner.api.views import (
     active_coupons_endpoint,
+    owner_analytics_endpoint,
     owner_coupon_detail_endpoint,
     owner_coupons_endpoint,
     owner_facilities_endpoint,
@@ -9,6 +10,7 @@ from features.owner.api.views import (
 )
 
 urlpatterns = [
+    path('api/owner/analytics/', owner_analytics_endpoint, name='owner-analytics'),
     path('api/coupons/active/', active_coupons_endpoint, name='active-coupons-endpoint'),
     path('api/coupons/owner/', owner_coupons_endpoint, name='owner-coupons-endpoint'),
     path(

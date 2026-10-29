@@ -149,9 +149,14 @@ def cancel_booking_endpoint(request, booking_id):
         )
 
         booking.status = BookingStatus.CANCELLED
+        refund_amount = Decimal('0.00')
+        if booking.payment_status == PaymentStatus.MOCK_PAID and booking.start_at > timezone.now():
+            refund_amount = booking.final_price
+            booking.refund_amount = refund_amount
+            booking.refunded_at = timezone.now()
         if booking.payment_status == PaymentStatus.MOCK_PENDING:
             booking.payment_status = PaymentStatus.MOCK_FAILED
-        booking.save(update_fields=['status', 'payment_status', 'updated_at'])
+        booking.save(update_fields=['status', 'payment_status', 'refund_amount', 'refunded_at', 'updated_at'])
 
     _sync_to_supabase_async(slot=slot, booking=booking)
 
@@ -161,6 +166,8 @@ def cancel_booking_endpoint(request, booking_id):
             'booking_id': booking.id,
             'status': booking.status,
             'payment_status': booking.payment_status,
+            'refund_amount': str(booking.refund_amount),
+            'refund_status': 'refunded' if booking.refund_amount > 0 else 'not_applicable',
         }
     )
 
@@ -523,4 +530,3 @@ def mock_payment_endpoint(request):
             'final_amount_total': str(total_final),
         }
     )
-

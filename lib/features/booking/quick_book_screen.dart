@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -33,16 +34,31 @@ class QuickBookScreen extends ConsumerStatefulWidget {
 }
 
 class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
-  DateTime _selectedDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  DateTime _selectedDate = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+  );
   bool _indoorOnly = false;
   String? _sportType;
   String? _selectedFacilityId;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
+  int _slotPage = 1;
+  Timer? _availabilityRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && !_processing) {
+        ref.invalidate(
+          liveSlotAvailabilityWithDiagnosticsProvider(
+            serializeQuery(_buildQuery()),
+          ),
+        );
+      }
+    });
     final now = DateTime.now();
     _sportType = widget.initialSportType;
     _selectedFacilityId = widget.initialFacilityId;
@@ -50,7 +66,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
 
     if (initialSlots != null && initialSlots.isNotEmpty) {
       final first = initialSlots.first;
-      _selectedDate = DateTime(first.startAt.year, first.startAt.month, first.startAt.day);
+      _selectedDate = DateTime(
+        first.startAt.year,
+        first.startAt.month,
+        first.startAt.day,
+      );
       _sportType = first.sportType;
       _selectedFacilityId = first.facilityId;
       return;
@@ -61,12 +81,22 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       return;
     }
 
-    _selectedDate = DateTime(initial.startAt.year, initial.startAt.month, initial.startAt.day);
+    _selectedDate = DateTime(
+      initial.startAt.year,
+      initial.startAt.month,
+      initial.startAt.day,
+    );
     _sportType = initial.sportType;
     _selectedFacilityId = initial.facilityId;
     if (initial.startAt.isAfter(now)) {
       _selectedSlotIds.add(initial.slotId);
     }
+  }
+
+  @override
+  void dispose() {
+    _availabilityRefreshTimer?.cancel();
+    super.dispose();
   }
 
   _SlotVisualState _slotVisualState({
@@ -79,11 +109,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     if (bookedByMe) {
       return _SlotVisualState.bookedByMe;
     }
+    if (isPast || !isAvailable || !isOpen) {
+      if (!isAvailable && !bookedByMe && !isPast && isOpen) {
+        return _SlotVisualState.held;
+      }
+      return _SlotVisualState.unavailable;
+    }
     if (selected) {
       return _SlotVisualState.selected;
-    }
-    if (isPast || !isAvailable || !isOpen) {
-      return _SlotVisualState.unavailable;
     }
     return _SlotVisualState.available;
   }
@@ -93,17 +126,23 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     return {
       'date': formatter.format(_selectedDate),
       ...?_sportType == null ? null : {'sport_type': _sportType!},
-      ...?_selectedFacilityId == null ? null : {'facility_id': _selectedFacilityId!},
+      ...?_selectedFacilityId == null
+          ? null
+          : {'facility_id': _selectedFacilityId!},
       ...?_indoorOnly ? {'is_indoor': 'true'} : null,
+      'page': '$_slotPage',
+      'page_size': '50',
     };
   }
 
-  Future<int> _createPendingBooking(ApiClient api, String token, LiveSlotAvailability slot) async {
-    final result = await api.postJson(
-      '/api/bookings/manual/',
-      {'slot_id': slot.slotId},
-      token: token,
-    );
+  Future<int> _createPendingBooking(
+    ApiClient api,
+    String token,
+    LiveSlotAvailability slot,
+  ) async {
+    final result = await api.postJson('/api/bookings/manual/', {
+      'slot_id': slot.slotId,
+    }, token: token);
 
     final bookingId = result['booking_id'] as int?;
     if (bookingId == null) {
@@ -112,22 +151,28 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     return bookingId;
   }
 
-  Future<void> _bookSelectedSlots(List<LiveSlotAvailability> selectedSlots) async {
+  Future<void> _bookSelectedSlots(
+    List<LiveSlotAvailability> selectedSlots,
+  ) async {
     final session = ref.read(authSessionProvider);
     if (session == null) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please login first.')));
       return;
     }
 
-    final sorted = [...selectedSlots]..sort((a, b) => a.startAt.compareTo(b.startAt));
+    final sorted = [...selectedSlots]
+      ..sort((a, b) => a.startAt.compareTo(b.startAt));
     final first = sorted.first;
     final last = sorted.last;
-    final total = sorted.fold<double>(0, (sum, slot) => sum + slot.basePricePerHour);
+    final total = sorted.fold<double>(
+      0,
+      (sum, slot) => sum + slot.basePricePerHour,
+    );
 
     final confirm = await showModalBottomSheet<bool>(
       context: context,
@@ -140,18 +185,29 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Confirm Booking', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                const Text(
+                  'Confirm Booking',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
+                ),
                 const SizedBox(height: 8),
-                Text(first.facilityName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  first.facilityName,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '${DateFormat('EEE, dd MMM').format(first.startAt)} • ${DateFormat('HH:mm').format(first.startAt)} - ${DateFormat('HH:mm').format(last.endAt)}',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text('${sorted.length} hour slot(s) selected'),
                 const SizedBox(height: 6),
-                Text('Total: \$${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  'Total: \$${total.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -214,7 +270,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         ref.invalidate(bookingHistoryProvider);
         ref.invalidate(dashboardSummaryProvider);
         ref.invalidate(liveSlotAvailabilityProvider);
-        ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider(serializeQuery(_buildQuery())));
+        ref.invalidate(
+          liveSlotAvailabilityWithDiagnosticsProvider(
+            serializeQuery(_buildQuery()),
+          ),
+        );
         await Future.wait([
           ref.read(bookingHistoryProvider.future),
           ref.read(dashboardSummaryProvider.future),
@@ -229,7 +289,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         ref.invalidate(bookingHistoryProvider);
         ref.invalidate(dashboardSummaryProvider);
         ref.invalidate(liveSlotAvailabilityProvider);
-        ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider(serializeQuery(_buildQuery())));
+        ref.invalidate(
+          liveSlotAvailabilityWithDiagnosticsProvider(
+            serializeQuery(_buildQuery()),
+          ),
+        );
         await Future.wait([
           ref.read(bookingHistoryProvider.future),
           ref.read(dashboardSummaryProvider.future),
@@ -238,7 +302,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('We could not complete your booking. Please try again.')),
+          const SnackBar(
+            content: Text(
+              'We could not complete your booking. Please try again.',
+            ),
+          ),
         );
       }
     } finally {
@@ -254,7 +322,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     final compact = width < 390;
     final tiny = width < 360;
     final queryKey = serializeQuery(_buildQuery());
-    final slotsAsync = ref.watch(liveSlotAvailabilityWithDiagnosticsProvider(queryKey));
+    final slotsAsync = ref.watch(
+      liveSlotAvailabilityWithDiagnosticsProvider(queryKey),
+    );
     final sports = [null, ...SportVisuals.all.map((e) => e.sportType)];
 
     return Scaffold(
@@ -270,6 +340,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 _indoorOnly = false;
                 _selectedFacilityId = null;
                 _selectedSlotIds.clear();
+                _slotPage = 1;
               });
             },
             icon: const Icon(Icons.refresh),
@@ -290,7 +361,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: OutlinedButton.icon(
-                onPressed: () => ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider(queryKey)),
+                onPressed: () => ref.invalidate(
+                  liveSlotAvailabilityWithDiagnosticsProvider(queryKey),
+                ),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Unable to load slots. Try Again'),
               ),
@@ -301,9 +374,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             final allRows = payload.data;
             final dateRows = allRows.where((row) {
               final d = row.startAt;
-              return d.year == _selectedDate.year && d.month == _selectedDate.month && d.day == _selectedDate.day;
-            }).toList()
-              ..sort((a, b) => a.startAt.compareTo(b.startAt));
+              return d.year == _selectedDate.year &&
+                  d.month == _selectedDate.month &&
+                  d.day == _selectedDate.day;
+            }).toList()..sort((a, b) => a.startAt.compareTo(b.startAt));
 
             final facilityIds = <String>{};
             final facilities = <LiveSlotAvailability>[];
@@ -313,28 +387,51 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
               }
             }
 
-            final selectedFacilityId = (_selectedFacilityId != null && facilityIds.contains(_selectedFacilityId))
+            final selectedFacilityId =
+                (_selectedFacilityId != null &&
+                    facilityIds.contains(_selectedFacilityId))
                 ? _selectedFacilityId
                 : (facilities.isEmpty ? null : facilities.first.facilityId);
 
-            final selectedFacilityRows = dateRows
-                .where((row) => row.facilityId == selectedFacilityId)
-                .toList()
-              ..sort((a, b) => a.startAt.compareTo(b.startAt));
+            final selectedFacilityRows =
+                dateRows
+                    .where((row) => row.facilityId == selectedFacilityId)
+                    .toList()
+                  ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
-            final validSlotIds = selectedFacilityRows.map((e) => e.slotId).toSet();
-            final effectiveSelectedIds = _selectedSlotIds.where(validSlotIds.contains).toSet();
+            final validSlotIds = selectedFacilityRows
+                .map((e) => e.slotId)
+                .toSet();
+            final effectiveSelectedIds = _selectedSlotIds
+                .where(validSlotIds.contains)
+                .where(
+                  (id) => selectedFacilityRows.any(
+                    (row) => row.slotId == id && row.isAvailable,
+                  ),
+                )
+                .toSet();
 
-            final selectedSlots = selectedFacilityRows.where((row) => effectiveSelectedIds.contains(row.slotId)).toList()
-              ..sort((a, b) => a.startAt.compareTo(b.startAt));
+            final selectedSlots =
+                selectedFacilityRows
+                    .where((row) => effectiveSelectedIds.contains(row.slotId))
+                    .toList()
+                  ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
             final isBilliard = _sportType == 'billiard';
             final resourceTitle = isBilliard ? 'Select Table' : 'Select Field';
 
-            final total = selectedSlots.fold<double>(0, (sum, slot) => sum + slot.basePricePerHour);
+            final total = selectedSlots.fold<double>(
+              0,
+              (sum, slot) => sum + slot.basePricePerHour,
+            );
 
             return ListView(
-              padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 10, compact ? 12 : 16, 100),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 12 : 16,
+                10,
+                compact ? 12 : 16,
+                100,
+              ),
               children: [
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -358,18 +455,28 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     children: [
                       const Text(
                         'Plan Your Match',
-                        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         selectedSlots.isEmpty
                             ? 'Choose one or multiple hours'
                             : '${selectedSlots.length} slot(s) selected • \$${total.toStringAsFixed(2)}',
-                        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
@@ -411,7 +518,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   dense: tiny,
                   title: Text(
                     'Indoor only',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: tiny ? 14 : null),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: tiny ? 14 : null,
+                    ),
                   ),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -426,8 +536,15 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final base = DateTime.now();
-                      final d = DateTime(base.year, base.month, base.day).add(Duration(days: index));
-                      final isSelected = d.year == _selectedDate.year && d.month == _selectedDate.month && d.day == _selectedDate.day;
+                      final d = DateTime(
+                        base.year,
+                        base.month,
+                        base.day,
+                      ).add(Duration(days: index));
+                      final isSelected =
+                          d.year == _selectedDate.year &&
+                          d.month == _selectedDate.month &&
+                          d.day == _selectedDate.day;
                       return _DateChip(
                         date: d,
                         isSelected: isSelected,
@@ -453,13 +570,19 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     spacing: 10,
                     runSpacing: 10,
                     children: facilities.map((facilityRow) {
-                      final selected = facilityRow.facilityId == selectedFacilityId;
+                      final selected =
+                          facilityRow.facilityId == selectedFacilityId;
                       return ChoiceChip(
                         label: Text(facilityRow.facilityName),
                         selected: selected,
                         showCheckmark: false,
                         selectedColor: const Color(0xFF111827),
-                        labelStyle: TextStyle(color: selected ? Colors.white : const Color(0xFF4B5563), fontWeight: FontWeight.w700),
+                        labelStyle: TextStyle(
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF4B5563),
+                          fontWeight: FontWeight.w700,
+                        ),
                         onSelected: (_) {
                           setState(() {
                             _selectedFacilityId = facilityRow.facilityId;
@@ -470,17 +593,22 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     }).toList(),
                   ),
                 const SizedBox(height: 18),
-                  _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),
+                _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),
                 const SizedBox(height: 10),
                 if (selectedFacilityRows.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Text('No time slots for this date. Try another date or sport.'),
+                    child: Text(
+                      'No time slots for this date. Try another date or sport.',
+                    ),
                   )
                 else
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final columns = math.max(2, (constraints.maxWidth / (compact ? 118 : 136)).floor());
+                      final columns = math.max(
+                        2,
+                        (constraints.maxWidth / (compact ? 118 : 136)).floor(),
+                      );
                       return GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -494,7 +622,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         itemBuilder: (context, index) {
                           final slot = selectedFacilityRows[index];
                           final isPast = slot.startAt.isBefore(now);
-                          final selected = effectiveSelectedIds.contains(slot.slotId);
+                          final selected = effectiveSelectedIds.contains(
+                            slot.slotId,
+                          );
                           final state = _slotVisualState(
                             isPast: isPast,
                             isAvailable: slot.isAvailable,
@@ -506,7 +636,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                             label: DateFormat('HH:mm').format(slot.startAt),
                             state: state,
                             onTap: () {
-                              if (state == _SlotVisualState.unavailable || state == _SlotVisualState.bookedByMe) {
+                              if (state == _SlotVisualState.unavailable ||
+                                  state == _SlotVisualState.held ||
+                                  state == _SlotVisualState.bookedByMe) {
                                 return;
                               }
                               setState(() {
@@ -534,11 +666,21 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(selectedSlots.first.facilityName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        Text(
+                          selectedSlots.first.facilityName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           '${DateFormat('EEE, dd MMM').format(selectedSlots.first.startAt)} • ${DateFormat('HH:mm').format(selectedSlots.first.startAt)} - ${DateFormat('HH:mm').format(selectedSlots.last.endAt)}',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -572,10 +714,26 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   spacing: 10,
                   runSpacing: 6,
                   children: const [
-                    _TimelineLegendDot(color: Color(0xFFB91C1C), label: 'Unavailable / full'),
-                    _TimelineLegendDot(color: Color(0xFF0F766E), label: 'Available'),
-                    _TimelineLegendDot(color: Color(0xFFF59E0B), label: 'Selected'),
-                    _TimelineLegendDot(color: Color(0xFF2563EB), label: 'Booked by me'),
+                    _TimelineLegendDot(
+                      color: Color(0xFFB91C1C),
+                      label: 'Unavailable / full',
+                    ),
+                    _TimelineLegendDot(
+                      color: Color(0xFFD97706),
+                      label: 'Being booked',
+                    ),
+                    _TimelineLegendDot(
+                      color: Color(0xFF0F766E),
+                      label: 'Available',
+                    ),
+                    _TimelineLegendDot(
+                      color: Color(0xFFF59E0B),
+                      label: 'Selected',
+                    ),
+                    _TimelineLegendDot(
+                      color: Color(0xFF2563EB),
+                      label: 'Booked by me',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -587,10 +745,15 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Icon(Icons.flash_on),
-                  label: Text(_processing ? 'Processing...' : 'Book Selected Slots'),
+                  label: Text(
+                    _processing ? 'Processing...' : 'Book Selected Slots',
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF111827),
                     foregroundColor: Colors.white,
@@ -609,6 +772,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   icon: const Icon(Icons.home_outlined),
                   label: const Text('Back to Home'),
                 ),
+                if (payload.hasNext) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _slotPage += 1),
+                    icon: const Icon(Icons.expand_more),
+                    label: Text('Load more slots (page ${_slotPage + 1})'),
+                  ),
+                ],
               ],
             );
           },
@@ -693,11 +864,17 @@ class _DateChip extends StatelessWidget {
         width: tiny ? 62 : 70,
         decoration: BoxDecoration(
           gradient: isSelected
-              ? const LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF1E293B)])
-              : const LinearGradient(colors: [Color(0xFFF8FAFC), Color(0xFFE5E7EB)]),
+              ? const LinearGradient(
+                  colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                )
+              : const LinearGradient(
+                  colors: [Color(0xFFF8FAFC), Color(0xFFE5E7EB)],
+                ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? const Color(0xFF334155) : const Color(0xFFD1D5DB),
+            color: isSelected
+                ? const Color(0xFF334155)
+                : const Color(0xFFD1D5DB),
             width: 1.2,
           ),
           boxShadow: isSelected
@@ -750,14 +927,19 @@ class _TimeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDisabled = state == _SlotVisualState.unavailable || state == _SlotVisualState.bookedByMe;
+    final isDisabled =
+        state == _SlotVisualState.unavailable ||
+        state == _SlotVisualState.held ||
+        state == _SlotVisualState.bookedByMe;
 
     final Decoration decoration;
     final Color textColor;
     switch (state) {
       case _SlotVisualState.available:
         decoration = BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)]),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
+          ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFF10B981), width: 1.4),
         );
@@ -765,7 +947,9 @@ class _TimeChip extends StatelessWidget {
         break;
       case _SlotVisualState.selected:
         decoration = BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)]),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
+          ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFF59E0B), width: 1.8),
           boxShadow: [
@@ -780,15 +964,29 @@ class _TimeChip extends StatelessWidget {
         break;
       case _SlotVisualState.unavailable:
         decoration = BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFFFEF2F2), Color(0xFFFEE2E2)]),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFEF2F2), Color(0xFFFEE2E2)],
+          ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFEF4444), width: 1.2),
         );
         textColor = const Color(0xFF991B1B);
         break;
+      case _SlotVisualState.held:
+        decoration = BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF7ED), Color(0xFFFED7AA)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFF59E0B), width: 1.4),
+        );
+        textColor = const Color(0xFFC2410C);
+        break;
       case _SlotVisualState.bookedByMe:
         decoration = BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF7C3AED)]),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
+          ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFF1D4ED8), width: 1.4),
         );
@@ -810,7 +1008,11 @@ class _TimeChip extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (state == _SlotVisualState.selected) ...[
-                  const Icon(Icons.check_circle, size: 14, color: Color(0xFF92400E)),
+                  const Icon(
+                    Icons.check_circle,
+                    size: 14,
+                    color: Color(0xFF92400E),
+                  ),
                   const SizedBox(width: 5),
                 ],
                 Text(
@@ -830,4 +1032,4 @@ class _TimeChip extends StatelessWidget {
   }
 }
 
-enum _SlotVisualState { available, selected, unavailable, bookedByMe }
+enum _SlotVisualState { available, selected, unavailable, held, bookedByMe }

@@ -14,9 +14,12 @@ class AuthGate extends ConsumerWidget {
     if (session == null) {
       return const HomeShell(isGuest: true);
     }
-    if (session.role == 'owner') {
-      return const OwnerHomeShell();
+    switch (session.role) {
+      case 'owner':
+        return const OwnerHomeShell();
+      case 'user':
+      default:
+        return const HomeShell();
     }
-    return const HomeShell();
   }
 }

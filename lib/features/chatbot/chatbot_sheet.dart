@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -18,16 +20,28 @@ class ChatbotSheet extends ConsumerStatefulWidget {
 class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
   final _ctrl = TextEditingController();
   final _messagesScrollCtrl = ScrollController();
-  final String _chatbotSessionId = 'chat-${DateTime.now().millisecondsSinceEpoch}';
+  String _chatbotSessionId = 'chat-${DateTime.now().millisecondsSinceEpoch}';
   bool _loading = false;
+  Timer? _availabilityRefreshTimer;
   List<ChatSuggestion> _suggestions = [];
   ChatSuggestion? _exactSuggestionForAction;
   final List<_ChatEntry> _messages = [
     const _ChatEntry(
       role: _ChatRole.assistant,
-      text: 'Tell me your sport, date, time, and duration. Example: book outdoor football tomorrow 5pm for 2 hours.',
+      text:
+          'Tell me your sport, date, time, and duration. Example: book outdoor football tomorrow 5pm for 2 hours.',
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && !_loading && _suggestions.isNotEmpty) {
+        _refreshSuggestionAvailability();
+      }
+    });
+  }
 
   static const List<String> _quickPrompts = [
     'book outdoor football tomorrow 5pm for 2 hours',
@@ -49,9 +63,69 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
 
   @override
   void dispose() {
+    _availabilityRefreshTimer?.cancel();
     _ctrl.dispose();
     _messagesScrollCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshSuggestionAvailability() async {
+    final first = _suggestions.first;
+    final optionParts = first.optionId.split(':');
+    final startAt = DateTime.tryParse(first.startAt);
+    if (optionParts.length < 2 || startAt == null) {
+      return;
+    }
+
+    try {
+      final rows = await ref
+          .read(apiClientProvider)
+          .getList('/api/live-slots/', {
+            'facility_id': optionParts.first,
+            'date': DateFormat('yyyy-MM-dd').format(startAt),
+          });
+      final liveById = <String, LiveSlotAvailability>{};
+      for (final raw in rows) {
+        final live = LiveSlotAvailability.fromJson(raw as Map<String, dynamic>);
+        liveById[live.slotId] = live;
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _suggestions = _suggestions.map((suggestion) {
+          final suggestionParts = suggestion.optionId.split(':');
+          final slotId = suggestionParts.length < 2
+              ? ''
+              : suggestionParts[1].split('+').first;
+          final live = liveById[slotId];
+          if (live == null) {
+            return suggestion;
+          }
+          return ChatSuggestion.fromJson({
+            'option_id': suggestion.optionId,
+            'facility_name': suggestion.facilityName,
+            'start_at': suggestion.startAt,
+            'end_at': suggestion.endAt,
+            'duration_hours': suggestion.durationHours,
+            'final_price': suggestion.finalPrice,
+            'currency': suggestion.currency,
+            'current_bookings': live.currentBookings,
+            'max_bookings': live.maxBookings,
+            'available_spots': live.maxBookings - live.currentBookings,
+            'is_available': live.isAvailable,
+            'availability_status': live.availabilityStatus,
+            'base_price': suggestion.basePrice,
+            'weather_discount': suggestion.weatherDiscount,
+            'empty_slot_discount': suggestion.emptySlotDiscount,
+            'rain_mm': suggestion.rainMm,
+            'is_exact_match': suggestion.isExactMatch,
+          });
+        }).toList();
+      });
+    } catch (_) {
+      // The booking endpoint remains authoritative if a refresh is interrupted.
+    }
   }
 
   void _scrollMessagesToBottom() {
@@ -131,12 +205,24 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
     if (trimmed.isEmpty) {
       return trimmed;
     }
-    final minusSuffix = RegExp(r'\s*-\s*(pitch|court|table)\s*(#?\d+|[a-z])\s*$', caseSensitive: false);
-    final spaceSuffix = RegExp(r'\s+(pitch|court|table)\s*(#?\d+|[a-z])\s*$', caseSensitive: false);
-    return trimmed.replaceAll(minusSuffix, '').replaceAll(spaceSuffix, '').trim();
+    final minusSuffix = RegExp(
+      r'\s*-\s*(pitch|court|table)\s*(#?\d+|[a-z])\s*$',
+      caseSensitive: false,
+    );
+    final spaceSuffix = RegExp(
+      r'\s+(pitch|court|table)\s*(#?\d+|[a-z])\s*$',
+      caseSensitive: false,
+    );
+    return trimmed
+        .replaceAll(minusSuffix, '')
+        .replaceAll(spaceSuffix, '')
+        .trim();
   }
 
-  String _buildSuggestionSummary(List<ChatSuggestion> suggestions, {String? preface}) {
+  String _buildSuggestionSummary(
+    List<ChatSuggestion> suggestions, {
+    String? preface,
+  }) {
     if (suggestions.isEmpty) {
       return 'No matching slots were found. Try another time or venue.';
     }
@@ -148,8 +234,12 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
       final startLabel = parsedStart == null
           ? s.startAt
           : DateFormat('EEE dd MMM, HH:mm').format(parsedStart);
-      final parsedEnd = DateTime.tryParse(s.endAt) ?? parsedStart?.add(Duration(minutes: (s.durationHours * 60).round()));
-      final endLabel = parsedEnd == null ? '' : DateFormat('HH:mm').format(parsedEnd);
+      final parsedEnd =
+          DateTime.tryParse(s.endAt) ??
+          parsedStart?.add(Duration(minutes: (s.durationHours * 60).round()));
+      final endLabel = parsedEnd == null
+          ? ''
+          : DateFormat('HH:mm').format(parsedEnd);
       final displayVenue = _displayVenueName(s.facilityName);
       lines.add(
         '${i + 1}) $startLabel${endLabel.isEmpty ? '' : ' - $endLabel'} | $displayVenue | ${s.finalPrice} ${s.currency} | ${s.availableSpots} spot(s)',
@@ -192,7 +282,8 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
           }
         }
         if (row != null) {
-          final durationHours = row.endAt.difference(row.startAt).inMinutes / 60;
+          final durationHours =
+              row.endAt.difference(row.startAt).inMinutes / 60;
           effectiveSuggestion = ChatSuggestion(
             optionId: '$bookingId',
             facilityName: row.facilityName,
@@ -205,6 +296,7 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
             maxBookings: 0,
             availableSpots: 0,
             isAvailable: true,
+            availabilityStatus: 'available',
             basePrice: row.finalPrice.toStringAsFixed(2),
             weatherDiscount: '0.00',
             emptySlotDiscount: '0.00',
@@ -224,7 +316,13 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
     final parsedStart = DateTime.tryParse(effectiveSuggestion?.startAt ?? '');
     final startAt = parsedStart;
     final parsedEnd = DateTime.tryParse(effectiveSuggestion?.endAt ?? '');
-    final endAt = parsedEnd ?? startAt?.add(Duration(minutes: ((effectiveSuggestion?.durationHours ?? 0) * 60).round()));
+    final endAt =
+        parsedEnd ??
+        startAt?.add(
+          Duration(
+            minutes: ((effectiveSuggestion?.durationHours ?? 0) * 60).round(),
+          ),
+        );
 
     final paymentResult = await Navigator.push<Object?>(
       context,
@@ -250,14 +348,20 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
 
     if (paymentResult == true) {
       await _refreshBookingViews();
-      _appendMessage(_ChatRole.assistant, 'Payment completed. Verifying booking status in database...');
+      _appendMessage(
+        _ChatRole.assistant,
+        'Payment completed. Verifying booking status in database...',
+      );
       await _sendSystemMessage('I paid, check payment status');
       return;
     }
 
     if (paymentResult == 'refresh_slots') {
       await _refreshBookingViews();
-      _appendMessage(_ChatRole.assistant, 'Payment window expired. I refreshed live slots. Please choose a new time and I can help you book again.');
+      _appendMessage(
+        _ChatRole.assistant,
+        'Payment window expired. I refreshed live slots. Please choose a new time and I can help you book again.',
+      );
       return;
     }
 
@@ -306,7 +410,9 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
 
       if (type == 'suggestions') {
         final raw = result['suggestions'] as List<dynamic>? ?? [];
-        final parsedSuggestions = raw.map((e) => ChatSuggestion.fromJson(e as Map<String, dynamic>)).toList();
+        final parsedSuggestions = raw
+            .map((e) => ChatSuggestion.fromJson(e as Map<String, dynamic>))
+            .toList();
         final exactRaw = result['exact_slot'] as Map<String, dynamic>?;
         ChatSuggestion? exact;
         if (exactRaw != null) {
@@ -323,7 +429,10 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
           _suggestions = parsedSuggestions;
           _exactSuggestionForAction = exact;
         });
-        _appendMessage(_ChatRole.assistant, _buildSuggestionSummary(parsedSuggestions, preface: text));
+        _appendMessage(
+          _ChatRole.assistant,
+          _buildSuggestionSummary(parsedSuggestions, preface: text),
+        );
       } else if (type == 'no_slots') {
         setState(() {
           _suggestions = [];
@@ -352,7 +461,8 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
             paymentQuote: quote,
           );
         }
-      } else if (type == 'auto_booking_created' || type == 'pending_booking_created') {
+      } else if (type == 'auto_booking_created' ||
+          type == 'pending_booking_created') {
         final bookingId = _parseBookingId(result['booking_id']);
         setState(() {
           _suggestions = [];
@@ -360,8 +470,8 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
         });
         _appendMessage(_ChatRole.assistant, text);
         if (bookingId != null) {
-            await _refreshBookingViews();
-            await _openPayment(bookingId: bookingId, feedbackMessage: text);
+          await _refreshBookingViews();
+          await _openPayment(bookingId: bookingId, feedbackMessage: text);
         }
       } else {
         _appendMessage(_ChatRole.assistant, text);
@@ -410,7 +520,9 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
         'suggestions': _serializedSuggestions(),
       }, token: session.token);
 
-      final text = (result['text'] as String?) ?? 'Please simulate payment to confirm this slot.';
+      final text =
+          (result['text'] as String?) ??
+          'Please simulate payment to confirm this slot.';
       final selected = result['selected_option'] as Map<String, dynamic>?;
       final quote = result['payment_quote'] as Map<String, dynamic>?;
       final bookingId = _parseBookingId(result['booking_id']);
@@ -424,7 +536,11 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
         );
       } else if (bookingId != null) {
         await _refreshBookingViews();
-        await _openPayment(bookingId: bookingId, feedbackMessage: text, suggestion: s);
+        await _openPayment(
+          bookingId: bookingId,
+          feedbackMessage: text,
+          suggestion: s,
+        );
       }
       if (mounted) {
         setState(() {
@@ -443,6 +559,72 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _showSessionHistory() async {
+    final sessions = await ref.read(chatSessionsProvider.future);
+    if (!mounted) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: 420,
+          child: sessions.isEmpty
+              ? const Center(child: Text('No AI booking sessions yet.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: sessions.length,
+                  itemBuilder: (context, index) {
+                    final session = sessions[index];
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.auto_awesome),
+                      ),
+                      title: Text(
+                        session.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${session.messageCount} messages • ${DateFormat('dd MMM yyyy, HH:mm').format(session.lastMessageAt)}',
+                      ),
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        final rows = await ref
+                            .read(apiClientProvider)
+                            .getList(
+                              '/api/chat/sessions/${session.sessionId}/',
+                              null,
+                              ref.read(authSessionProvider)?.token,
+                            );
+                        if (!mounted) {
+                          return;
+                        }
+                        setState(() {
+                          _chatbotSessionId = session.sessionId;
+                          _messages
+                            ..clear()
+                            ..addAll(
+                              rows.map(
+                                (row) => _ChatEntry(
+                                  role: (row['role'] as String?) == 'user'
+                                      ? _ChatRole.user
+                                      : _ChatRole.assistant,
+                                  text: (row['content'] as String?) ?? '',
+                                ),
+                              ),
+                            );
+                        });
+                      },
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -479,8 +661,15 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                       'AI Booking Assistant',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'AI session history',
+                    onPressed: _showSessionHistory,
+                    icon: const Icon(Icons.history),
                   ),
                 ],
               ),
@@ -495,19 +684,32 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                   final entry = _messages[index];
                   final isUser = entry.role == _ChatRole.user;
                   return Align(
-                    alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment: isUser
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: EdgeInsets.symmetric(horizontal: tiny ? 10 : 12, vertical: tiny ? 8 : 10),
-                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * (tiny ? 0.82 : 0.72)),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: tiny ? 10 : 12,
+                        vertical: tiny ? 8 : 10,
+                      ),
+                      constraints: BoxConstraints(
+                        maxWidth:
+                            MediaQuery.of(context).size.width *
+                            (tiny ? 0.82 : 0.72),
+                      ),
                       decoration: BoxDecoration(
                         color: isUser ? cs.primary : Colors.white,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+                        border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.45),
+                        ),
                       ),
                       child: Text(
                         entry.text,
-                        style: TextStyle(color: isUser ? cs.onPrimary : cs.onSurface),
+                        style: TextStyle(
+                          color: isUser ? cs.onPrimary : cs.onSurface,
+                        ),
                       ),
                     ),
                   );
@@ -551,7 +753,9 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                       prompt,
                       style: TextStyle(fontSize: tiny ? 11.5 : 12.5),
                     ),
-                    labelPadding: EdgeInsets.symmetric(horizontal: tiny ? 4 : 6),
+                    labelPadding: EdgeInsets.symmetric(
+                      horizontal: tiny ? 4 : 6,
+                    ),
                     onPressed: _loading
                         ? null
                         : () {
@@ -586,7 +790,9 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                       runSpacing: 8,
                       children: [
                         FilledButton.icon(
-                          onPressed: _loading ? null : () => _book(_exactSuggestionForAction!),
+                          onPressed: _loading
+                              ? null
+                              : () => _book(_exactSuggestionForAction!),
                           icon: const Icon(Icons.auto_awesome),
                           label: const Text('Auto-book Exact'),
                         ),
@@ -594,9 +800,9 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                           onPressed: _loading
                               ? null
                               : () => _appendMessage(
-                                    _ChatRole.assistant,
-                                    'Manual mode selected. Review the slots below and tap Book this on your preferred one.',
-                                  ),
+                                  _ChatRole.assistant,
+                                  'Manual mode selected. Review the slots below and tap Book this on your preferred one.',
+                                ),
                           icon: const Icon(Icons.view_list),
                           label: const Text('Browse Manually'),
                         ),
@@ -620,27 +826,42 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                           final parsedStart = DateTime.tryParse(s.startAt);
                           final startLabel = parsedStart == null
                               ? s.startAt
-                              : DateFormat('EEE, dd MMM • HH:mm').format(parsedStart);
+                              : DateFormat(
+                                  'EEE, dd MMM • HH:mm',
+                                ).format(parsedStart);
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
                             child: Padding(
                               padding: const EdgeInsets.all(10),
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
-                                  final stackButton = constraints.maxWidth < 380;
+                                  final stackButton =
+                                      constraints.maxWidth < 380;
                                   final info = Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: s.isExactMatch ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
-                                          borderRadius: BorderRadius.circular(999),
+                                          color: s.isExactMatch
+                                              ? const Color(0xFFECFDF5)
+                                              : const Color(0xFFFFFBEB),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                         child: Text(
-                                          s.isExactMatch ? 'Exact Match' : 'Alternative',
+                                          s.isExactMatch
+                                              ? 'Exact Match'
+                                              : 'Alternative',
                                           style: TextStyle(
-                                            color: s.isExactMatch ? const Color(0xFF047857) : const Color(0xFFB45309),
+                                            color: s.isExactMatch
+                                                ? const Color(0xFF047857)
+                                                : const Color(0xFFB45309),
                                             fontWeight: FontWeight.w800,
                                             fontSize: 11,
                                           ),
@@ -649,16 +870,46 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                                       const SizedBox(height: 6),
                                       Text(
                                         '${s.facilityName} • ${s.finalPrice} ${s.currency}',
-                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         '$startLabel • ${s.durationHours.toStringAsFixed(0)} hour(s)',
-                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                       const SizedBox(height: 2),
+                                      if (s.availabilityStatus == 'held')
+                                        Container(
+                                          margin: const EdgeInsets.only(top: 5),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFF7ED),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFF59E0B),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'Being booked by another user',
+                                            style: TextStyle(
+                                              color: Color(0xFFC2410C),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
                                       Text(
                                         'Slots: ${s.availableSpots} free (${s.currentBookings}/${s.maxBookings} booked)',
                                         style: const TextStyle(fontSize: 12),
@@ -667,17 +918,29 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
                                   );
 
                                   final action = FilledButton.tonal(
-                                    onPressed: _loading || !s.isAvailable ? null : () => _book(s),
-                                    child: Text(s.isAvailable ? 'Book this' : 'Full'),
+                                    onPressed: _loading || !s.isAvailable
+                                        ? null
+                                        : () => _book(s),
+                                    child: Text(
+                                      s.availabilityStatus == 'held'
+                                          ? 'In progress'
+                                          : (s.isAvailable
+                                                ? 'Book this'
+                                                : 'Full'),
+                                    ),
                                   );
 
                                   if (stackButton) {
                                     return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         info,
                                         const SizedBox(height: 8),
-                                        SizedBox(width: double.infinity, child: action),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: action,
+                                        ),
                                       ],
                                     );
                                   }

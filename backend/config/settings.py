@@ -70,10 +70,11 @@ ASGI_APPLICATION = 'config.asgi.application'
 DATABASES = {
     'default': dj_database_url.parse(
         os.environ['DATABASE_URL'],
-        conn_max_age=600,
+        conn_max_age=60,
         ssl_require=True,
     )
 }
+DATABASES['default']['CONN_HEALTH_CHECKS'] = True
 
 AUTH_PASSWORD_VALIDATORS = []
 

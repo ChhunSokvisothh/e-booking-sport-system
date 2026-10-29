@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Coupon, Facility, SportType, TimeSlot
+from core.models import Booking, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
 from global_utils.view_helpers import (
     COUPON_ARCHIVE_RETENTION_DAYS,
@@ -20,6 +20,7 @@ from global_utils.view_helpers import (
     _is_owner_user,
     _uuid_from_user,
 )
+from global_utils.permissions import IsVenueOwner
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -34,8 +35,46 @@ def active_coupons_endpoint(request):
     return Response(CouponSerializer(qs, many=True).data)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsVenueOwner])
+def owner_analytics_endpoint(request):
+    if not _is_owner_user(request.user):
+        return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+    owner_uuid = _uuid_from_user(request.user)
+    facility_filter = models.Q(facility__owner_user_id=owner_uuid)
+    if request.user.is_superuser:
+        facility_filter = models.Q()
+    bookings = Booking.objects.filter(facility_filter).select_related('facility')
+    revenue = bookings.filter(payment_status=PaymentStatus.MOCK_PAID).aggregate(total=models.Sum('final_price')).get('total') or Decimal('0.00')
+    refunds = bookings.aggregate(total=models.Sum('refund_amount')).get('total') or Decimal('0.00')
+    cancelled = bookings.filter(status=BookingStatus.CANCELLED).count()
+    return Response({
+        'total_bookings': bookings.count(),
+        'confirmed_bookings': bookings.filter(status=BookingStatus.CONFIRMED).count(),
+        'pending_bookings': bookings.filter(status=BookingStatus.PENDING).count(),
+        'cancelled_bookings': cancelled,
+        'revenue': str(revenue),
+        'refunds': str(refunds),
+        'net_revenue': str((revenue - refunds).quantize(Decimal('0.01'))),
+        'cancellation_rate': round((cancelled / bookings.count()) * 100, 2) if bookings.exists() else 0,
+        'by_venue': [
+            {
+                'facility_name': row['facility__name'],
+                'bookings': row['count'],
+                'revenue': str(row['revenue'] or Decimal('0.00')),
+                'cancellations': row['cancellations'],
+            }
+            for row in bookings.values('facility__name').annotate(
+                count=models.Count('id'),
+                revenue=models.Sum('final_price', filter=models.Q(payment_status=PaymentStatus.MOCK_PAID)),
+                cancellations=models.Count('id', filter=models.Q(status=BookingStatus.CANCELLED)),
+            ).order_by('-revenue')
+        ],
+    })
+
+
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_facilities_endpoint(request):
     if not _is_owner_user(request.user):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
@@ -145,7 +184,7 @@ def owner_facilities_endpoint(request):
 
 
 @api_view(['PATCH', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_facility_detail_endpoint(request, facility_id):
     if not _is_owner_user(request.user):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
@@ -258,7 +297,7 @@ def owner_facility_detail_endpoint(request, facility_id):
 
 
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_coupons_endpoint(request):
     if not (request.user.is_staff or request.user.is_superuser):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
@@ -266,7 +305,10 @@ def owner_coupons_endpoint(request):
     if request.method == 'GET':
         now = timezone.now()
         archive_cutoff = _coupon_archive_cutoff(now)
-        qs = Coupon.objects.filter(
+        owner_filter = models.Q(owner_user_id=_uuid_from_user(request.user))
+        if request.user.is_superuser:
+            owner_filter = models.Q()
+        qs = Coupon.objects.filter(owner_filter).filter(
             models.Q(archived_at__isnull=True) | models.Q(archived_at__gte=archive_cutoff)
         ).order_by('-created_at')
         return Response(CouponSerializer(qs, many=True).data)
@@ -327,7 +369,7 @@ def owner_coupons_endpoint(request):
 
 
 @api_view(['PATCH', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_coupon_detail_endpoint(request, coupon_id):
     if not (request.user.is_staff or request.user.is_superuser):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
@@ -336,6 +378,12 @@ def owner_coupon_detail_endpoint(request, coupon_id):
         coupon = Coupon.objects.get(id=coupon_id)
     except Coupon.DoesNotExist:
         return Response({'error': 'Coupon not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if (
+        not request.user.is_superuser
+        and coupon.owner_user_id != _uuid_from_user(request.user)
+    ):
+        return Response({'error': 'You can only manage your own coupons.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'PATCH':
         if not _coupon_is_within_owner_retention(coupon):
@@ -370,4 +418,3 @@ def owner_coupon_detail_endpoint(request, coupon_id):
             'retention_days': COUPON_ARCHIVE_RETENTION_DAYS,
         }
     )
-

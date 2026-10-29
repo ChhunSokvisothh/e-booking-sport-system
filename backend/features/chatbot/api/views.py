@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Booking, BookingSource, TimeSlot
+from core.models import Booking, BookingSource, ChatMessage, ChatSession, TimeSlot
 from global_utils.view_helpers import (
     PAYMENT_WINDOW_MINUTES,
     _build_payment_quote_payload,
@@ -47,8 +47,73 @@ from global_utils.view_helpers import (
 
 logger = logging.getLogger(__name__)
 
+def _persist_chat_response(view):
+    def wrapped(request, *args, **kwargs):
+        response = view(request, *args, **kwargs)
+        session_id = (request.data.get('chatbot_session_id') or '').strip()
+        if session_id and hasattr(response, 'data') and isinstance(response.data, dict):
+            content = response.data.get('text') or response.data.get('error') or ''
+            if content:
+                try:
+                    session = ChatSession.objects.get(
+                        session_id=session_id,
+                        user_id=_uuid_from_user(request.user),
+                    )
+                    ChatMessage.objects.create(
+                        session=session,
+                        role=ChatMessage.Role.ASSISTANT,
+                        content=str(content),
+                    )
+                except ChatSession.DoesNotExist:
+                    logger.warning('Unable to persist response for unknown chat session %s', session_id)
+                except Exception:
+                    # A history write must never turn a valid AI response into a 500.
+                    logger.exception('Unable to persist chat response for session %s', session_id)
+        return response
+    return wrapped
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def chat_sessions_endpoint(request):
+    user_id = _uuid_from_user(request.user)
+    sessions = ChatSession.objects.filter(user_id=user_id).prefetch_related('messages')[:50]
+    return Response(
+        [
+            {
+                'session_id': item.session_id,
+                'title': item.title or 'AI Booking Session',
+                'created_at': item.created_at,
+                'last_message_at': item.last_message_at,
+                'message_count': item.messages.count(),
+            }
+            for item in sessions
+        ]
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def chat_session_messages_endpoint(request, session_id):
+    user_id = _uuid_from_user(request.user)
+    try:
+        session = ChatSession.objects.get(session_id=session_id, user_id=user_id)
+    except ChatSession.DoesNotExist:
+        return Response({'error': 'Chat session not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(
+        [
+            {
+                'role': message.role,
+                'content': message.content,
+                'created_at': message.created_at,
+            }
+            for message in session.messages.all()
+        ]
+    )
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@_persist_chat_response
 def chat_endpoint(request):
     try:
         message = (request.data.get('message') or '').strip()
@@ -66,6 +131,14 @@ def chat_endpoint(request):
         keyword_intent = _keyword_intent_hint(message)
         booking_source_raw = (request.data.get('booking_source') or BookingSource.CHATBOT).strip().lower()
         chatbot_session_id = (request.data.get('chatbot_session_id') or '').strip()
+        if chatbot_session_id:
+            session, _ = ChatSession.objects.get_or_create(
+                session_id=chatbot_session_id,
+                defaults={'user_id': user_id, 'title': message[:160]},
+            )
+            if session.user_id != user_id:
+                return Response({'error': 'Chat session does not belong to this account.'}, status=status.HTTP_403_FORBIDDEN)
+            ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content=message)
         booking_source = BookingSource.CHATBOT if booking_source_raw == BookingSource.CHATBOT else BookingSource.MANUAL
         chat_context = _load_chat_context(user_id, chatbot_session_id)
 
@@ -84,7 +157,8 @@ def chat_endpoint(request):
                         'text': 'No booking found yet. Ask me to find a slot first.',
                     }
                 )
-            return Response(_payment_status_payload(booking))
+            payload = _payment_status_payload(booking)
+            return Response(payload)
 
         # Route normal questions to FAQ/help mode before booking extraction.
         if keyword_intent == 'faq':
@@ -532,12 +606,15 @@ def chat_endpoint(request):
             }
         )
     except Exception:
-        logger.exception('Chat request failed')
+        logger.exception(
+            'Chat request failed user_id=%s session_id=%s',
+            getattr(request.user, 'pk', None),
+            request.data.get('chatbot_session_id'),
+        )
         return Response(
             {
-                'error': 'AI booking is temporarily unavailable. Please try again.',
+                'error': 'I could not complete that request right now. Please try again.',
                 'type': 'chat_error',
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-

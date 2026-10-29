@@ -17,8 +17,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _venueCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSignUp = false;
+  bool _isOwnerSignup = false;
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -28,6 +31,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
+    _venueCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
@@ -41,34 +46,72 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     try {
       if (_isSignUp) {
-        await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
+        if (_isOwnerSignup) {
+          await auth.ownerSignUp(
+            email: _emailCtrl.text.trim(),
+            password: _passwordCtrl.text.trim(),
+            venueName: _venueCtrl.text.trim(),
+            contactPhone: _phoneCtrl.text.trim(),
+          );
+        } else {
+          await auth.signUp(
+            email: _emailCtrl.text.trim(),
+            password: _passwordCtrl.text.trim(),
+          );
+        }
       } else {
-        await auth.login(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
+        await auth.login(
+          email: _emailCtrl.text.trim(),
+          password: _passwordCtrl.text.trim(),
+        );
       }
 
       if (mounted) {
+        final session = ref.read(authSessionProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_isSignUp ? 'Account created and logged in.' : 'Logged in')),
+          SnackBar(
+            content: Text(
+              _isOwnerSignup && session?.ownerStatus == 'pending'
+                  ? 'Application submitted. Admin approval is required before owner dashboard access.'
+                  : _isSignUp
+                  ? 'Account created and logged in.'
+                  : 'Logged in',
+            ),
+          ),
         );
 
-        final session = ref.read(authSessionProvider);
-        final target = (session?.role == 'owner') ? const OwnerHomeShell() : const HomeShell();
+        final target = _screenForRole(session?.role);
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => target),
           (route) => false,
         );
       }
+
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Authentication failed. Please check your credentials and try again.')),
+          const SnackBar(
+            content: Text(
+              'Authentication failed. Please check your credentials and try again.',
+            ),
+          ),
         );
       }
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Widget _screenForRole(String? role) {
+    switch (role) {
+      case 'owner':
+        return const OwnerHomeShell();
+      case 'user':
+      default:
+        return const HomeShell();
     }
   }
 
@@ -115,9 +158,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       child: isWide
                           ? Row(
                               children: [
-                                Expanded(
-                                  child: _AuthHero(isSignUp: _isSignUp),
-                                ),
+                                Expanded(child: _AuthHero(isSignUp: _isSignUp)),
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: _AuthCard(
@@ -130,15 +171,27 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     obscurePassword: _obscurePassword,
                                     obscureConfirm: _obscureConfirm,
                                     onToggleObscurePassword: () {
-                                      setState(() => _obscurePassword = !_obscurePassword);
+                                      setState(
+                                        () => _obscurePassword =
+                                            !_obscurePassword,
+                                      );
                                     },
                                     onToggleObscureConfirm: () {
-                                      setState(() => _obscureConfirm = !_obscureConfirm);
+                                      setState(
+                                        () =>
+                                            _obscureConfirm = !_obscureConfirm,
+                                      );
                                     },
                                     onSubmit: _submit,
-                                    onToggleMode: () {
-                                      setState(() => _isSignUp = !_isSignUp);
-                                    },
+                                    isOwnerSignup: _isOwnerSignup,
+                                    venueCtrl: _venueCtrl,
+                                    phoneCtrl: _phoneCtrl,
+                                    onToggleOwnerSignup: () => setState(() {
+                                      _isSignUp = true;
+                                      _isOwnerSignup = !_isOwnerSignup;
+                                    }),
+                                    onToggleMode: () =>
+                                        setState(() => _isSignUp = !_isSignUp),
                                   ),
                                 ),
                               ],
@@ -157,15 +210,26 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   obscurePassword: _obscurePassword,
                                   obscureConfirm: _obscureConfirm,
                                   onToggleObscurePassword: () {
-                                    setState(() => _obscurePassword = !_obscurePassword);
+                                    setState(
+                                      () =>
+                                          _obscurePassword = !_obscurePassword,
+                                    );
                                   },
                                   onToggleObscureConfirm: () {
-                                    setState(() => _obscureConfirm = !_obscureConfirm);
+                                    setState(
+                                      () => _obscureConfirm = !_obscureConfirm,
+                                    );
                                   },
                                   onSubmit: _submit,
-                                  onToggleMode: () {
-                                    setState(() => _isSignUp = !_isSignUp);
-                                  },
+                                  isOwnerSignup: _isOwnerSignup,
+                                  venueCtrl: _venueCtrl,
+                                  phoneCtrl: _phoneCtrl,
+                                  onToggleOwnerSignup: () => setState(() {
+                                    _isSignUp = true;
+                                    _isOwnerSignup = !_isOwnerSignup;
+                                  }),
+                                  onToggleMode: () =>
+                                      setState(() => _isSignUp = !_isSignUp),
                                 ),
                               ],
                             ),
@@ -198,7 +262,11 @@ class _AuthHero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.sports_soccer_rounded, color: Colors.white, size: 44),
+          const Icon(
+            Icons.sports_soccer_rounded,
+            color: Colors.white,
+            size: 44,
+          ),
           const SizedBox(height: 14),
           const Text(
             'E-Booking Sport',
@@ -276,6 +344,10 @@ class _AuthCard extends StatelessWidget {
     required this.onToggleObscureConfirm,
     required this.onSubmit,
     required this.onToggleMode,
+    required this.isOwnerSignup,
+    required this.venueCtrl,
+    required this.phoneCtrl,
+    required this.onToggleOwnerSignup,
   });
 
   final GlobalKey<FormState> formKey;
@@ -290,6 +362,10 @@ class _AuthCard extends StatelessWidget {
   final VoidCallback onToggleObscureConfirm;
   final VoidCallback onSubmit;
   final VoidCallback onToggleMode;
+  final bool isOwnerSignup;
+  final TextEditingController venueCtrl;
+  final TextEditingController phoneCtrl;
+  final VoidCallback onToggleOwnerSignup;
 
   @override
   Widget build(BuildContext context) {
@@ -303,21 +379,32 @@ class _AuthCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                isSignUp ? 'Create Account' : 'Welcome Back',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                isOwnerSignup
+                    ? 'Register Your Venue'
+                    : (isSignUp ? 'Create Account' : 'Welcome Back'),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
-                isSignUp ? 'Use your email to join and start booking.' : 'Login to access your account homepage.',
+                isOwnerSignup
+                    ? 'Submit your venue for approval and manage bookings from one owner console.'
+                    : (isSignUp
+                          ? 'Use your email to join and start booking.'
+                          : 'Login to access your account homepage.'),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 18),
               TextFormField(
                 controller: emailCtrl,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline)),
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.mail_outline),
+                ),
                 validator: (value) {
                   final email = (value ?? '').trim();
                   if (email.isEmpty) {
@@ -330,6 +417,28 @@ class _AuthCard extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 12),
+              if (isOwnerSignup) ...[
+                TextFormField(
+                  controller: venueCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Venue name',
+                    prefixIcon: Icon(Icons.stadium_outlined),
+                  ),
+                  validator: (value) => (value ?? '').trim().isEmpty
+                      ? 'Venue name is required'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Contact phone',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               TextFormField(
                 controller: passwordCtrl,
                 obscureText: obscurePassword,
@@ -338,7 +447,11 @@ class _AuthCard extends StatelessWidget {
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
                     onPressed: onToggleObscurePassword,
-                    icon: Icon(obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
                   ),
                 ),
                 validator: (value) {
@@ -359,7 +472,11 @@ class _AuthCard extends StatelessWidget {
                     prefixIcon: const Icon(Icons.lock_person_outlined),
                     suffixIcon: IconButton(
                       onPressed: onToggleObscureConfirm,
-                      icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      icon: Icon(
+                        obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                     ),
                   ),
                   validator: (value) {
@@ -383,7 +500,20 @@ class _AuthCard extends StatelessWidget {
               ),
               TextButton(
                 onPressed: loading ? null : onToggleMode,
-                child: Text(isSignUp ? 'Already have account? Login' : 'No account? Sign up'),
+                child: Text(
+                  isSignUp
+                      ? 'Already have account? Login'
+                      : 'No account? Sign up',
+                ),
+              ),
+              TextButton.icon(
+                onPressed: loading ? null : onToggleOwnerSignup,
+                icon: const Icon(Icons.business_outlined),
+                label: Text(
+                  isOwnerSignup
+                      ? 'Use regular customer registration'
+                      : 'Register a venue',
+                ),
               ),
             ],
           ),

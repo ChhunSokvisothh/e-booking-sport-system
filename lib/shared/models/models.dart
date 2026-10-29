@@ -215,6 +215,7 @@ class ChatSuggestion {
     required this.maxBookings,
     required this.availableSpots,
     required this.isAvailable,
+    required this.availabilityStatus,
     required this.basePrice,
     required this.weatherDiscount,
     required this.emptySlotDiscount,
@@ -233,6 +234,7 @@ class ChatSuggestion {
   final int maxBookings;
   final int availableSpots;
   final bool isAvailable;
+  final String availabilityStatus;
   final String basePrice;
   final String weatherDiscount;
   final String emptySlotDiscount;
@@ -246,7 +248,9 @@ class ChatSuggestion {
     if (endAt.isEmpty) {
       final parsedStart = DateTime.tryParse(startAt);
       if (parsedStart != null) {
-        endAt = parsedStart.add(Duration(minutes: (durationHours * 60).round())).toIso8601String();
+        endAt = parsedStart
+            .add(Duration(minutes: (durationHours * 60).round()))
+            .toIso8601String();
       }
     }
 
@@ -262,11 +266,42 @@ class ChatSuggestion {
       maxBookings: (json['max_bookings'] as num?)?.toInt() ?? 0,
       availableSpots: (json['available_spots'] as num?)?.toInt() ?? 0,
       isAvailable: json['is_available'] as bool? ?? true,
+      availabilityStatus: (json['availability_status'] as String? ?? '')
+          .trim()
+          .toLowerCase(),
       basePrice: (json['base_price'] ?? json['final_price'] ?? '0').toString(),
       weatherDiscount: (json['weather_discount'] ?? '0.00').toString(),
       emptySlotDiscount: (json['empty_slot_discount'] ?? '0.00').toString(),
       rainMm: (json['rain_mm'] as num?)?.toDouble() ?? 0,
       isExactMatch: json['is_exact_match'] as bool? ?? false,
+    );
+  }
+}
+
+class ChatSessionItem {
+  const ChatSessionItem({
+    required this.sessionId,
+    required this.title,
+    required this.createdAt,
+    required this.lastMessageAt,
+    required this.messageCount,
+  });
+
+  final String sessionId;
+  final String title;
+  final DateTime createdAt;
+  final DateTime lastMessageAt;
+  final int messageCount;
+
+  factory ChatSessionItem.fromJson(Map<String, dynamic> json) {
+    return ChatSessionItem(
+      sessionId: json['session_id'] as String,
+      title: (json['title'] as String?) ?? 'AI Booking Session',
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+      lastMessageAt: DateTime.parse(
+        json['last_message_at'] as String,
+      ).toLocal(),
+      messageCount: (json['message_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -286,8 +321,9 @@ class DashboardSportAvailability {
     return DashboardSportAvailability(
       sportType: (json['sport_type'] as String? ?? 'unknown').toLowerCase(),
       availableSlots: (json['available_slots'] as num?)?.toInt() ?? 0,
-      nextStartAt:
-          (json['next_start_at'] as String?) == null ? null : DateTime.parse(json['next_start_at'] as String).toLocal(),
+      nextStartAt: (json['next_start_at'] as String?) == null
+          ? null
+          : DateTime.parse(json['next_start_at'] as String).toLocal(),
     );
   }
 }
@@ -369,6 +405,42 @@ class DashboardSummary {
   }
 }
 
+class OwnerAnalytics {
+  const OwnerAnalytics({
+    required this.totalBookings,
+    required this.confirmedBookings,
+    required this.pendingBookings,
+    required this.cancelledBookings,
+    required this.revenue,
+    required this.refunds,
+    required this.netRevenue,
+    required this.cancellationRate,
+  });
+
+  final int totalBookings;
+  final int confirmedBookings;
+  final int pendingBookings;
+  final int cancelledBookings;
+  final double revenue;
+  final double refunds;
+  final double netRevenue;
+  final double cancellationRate;
+
+  factory OwnerAnalytics.fromJson(Map<String, dynamic> json) {
+    double number(dynamic value) => double.tryParse(value.toString()) ?? 0;
+    return OwnerAnalytics(
+      totalBookings: (json['total_bookings'] as num?)?.toInt() ?? 0,
+      confirmedBookings: (json['confirmed_bookings'] as num?)?.toInt() ?? 0,
+      pendingBookings: (json['pending_bookings'] as num?)?.toInt() ?? 0,
+      cancelledBookings: (json['cancelled_bookings'] as num?)?.toInt() ?? 0,
+      revenue: number(json['revenue']),
+      refunds: number(json['refunds']),
+      netRevenue: number(json['net_revenue']),
+      cancellationRate: number(json['cancellation_rate']),
+    );
+  }
+}
+
 class LiveSlotAvailability {
   const LiveSlotAvailability({
     required this.slotId,
@@ -426,9 +498,13 @@ class LiveSlotAvailability {
       slotVersion: (json['slot_version'] as num?)?.toInt() ?? 1,
       reservationHoldUntil: (json['reservation_hold_until'] as String?) == null
           ? null
-          : DateTime.tryParse(json['reservation_hold_until'] as String)?.toLocal(),
+          : DateTime.tryParse(
+              json['reservation_hold_until'] as String,
+            )?.toLocal(),
       bookedByMe: json['booked_by_me'] as bool? ?? false,
-      availabilityStatus: ((json['availability_status'] as String?) ?? '').trim().toLowerCase(),
+      availabilityStatus: ((json['availability_status'] as String?) ?? '')
+          .trim()
+          .toLowerCase(),
     );
   }
 }

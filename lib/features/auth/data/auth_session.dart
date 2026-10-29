@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthSession {
@@ -10,6 +10,7 @@ class AuthSession {
     required this.userUuid,
     required this.email,
     this.role = 'user',
+    this.ownerStatus,
   });
 
   final String token;
@@ -17,6 +18,7 @@ class AuthSession {
   final String userUuid;
   final String email;
   final String role;
+  final String? ownerStatus;
 
   Map<String, dynamic> toJson() {
     return {
@@ -25,6 +27,7 @@ class AuthSession {
       'user_uuid': userUuid,
       'email': email,
       'role': role,
+      'owner_status': ownerStatus,
     };
   }
 
@@ -35,6 +38,7 @@ class AuthSession {
       userUuid: json['user_uuid'] as String,
       email: json['email'] as String,
       role: (json['role'] as String?) ?? 'user',
+      ownerStatus: json['owner_status'] as String?,
     );
   }
 }

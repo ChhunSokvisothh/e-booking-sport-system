@@ -165,6 +165,8 @@ class Booking(models.Model):
     coupon_discount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     booking_source = models.CharField(max_length=20, choices=BookingSource.choices, default=BookingSource.MANUAL)
     chatbot_session_id = models.CharField(max_length=64, blank=True)
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    refunded_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -206,6 +208,63 @@ class Booking(models.Model):
             'empty_slot_discount': empty_slot_discount,
             'final_price': final,
         }
+
+
+class ChatSession(models.Model):
+    user_id = models.UUIDField()
+    session_id = models.CharField(max_length=64, unique=True)
+    title = models.CharField(max_length=160, blank=True)
+    last_message_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-last_message_at']
+        indexes = [models.Index(fields=['user_id', '-last_message_at'])]
+        db_table = 'core_chat_session'
+
+
+class ChatMessage(models.Model):
+    class Role(models.TextChoices):
+        USER = 'user', 'User'
+        ASSISTANT = 'assistant', 'Assistant'
+
+    session = models.ForeignKey(
+        ChatSession,
+        on_delete=models.CASCADE,
+        related_name='messages',
+        to_field='session_id',
+        db_column='session_id',
+    )
+    role = models.CharField(max_length=12, choices=Role.choices)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['session', 'created_at'])]
+        db_table = 'core_chat_message'
+
+
+class OwnerApplication(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='owner_application',
+    )
+    venue_name = models.CharField(max_length=160)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        db_table = 'core_owner_application'
 
 
 class Coupon(models.Model):

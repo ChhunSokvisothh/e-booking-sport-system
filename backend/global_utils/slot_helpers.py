@@ -13,6 +13,11 @@ def _slot_status(is_open, current_bookings, max_bookings):
         return 'limited'
     return 'available'
 
+def _availability_status(is_open, current_bookings, max_bookings, reservation_hold_until=None):
+    if reservation_hold_until and reservation_hold_until > timezone.now():
+        return 'held'
+    return _slot_status(is_open, current_bookings, max_bookings)
+
 
 def _slot_payload(
     slot_id,
@@ -33,11 +38,9 @@ def _slot_payload(
         hold_until = timezone.make_aware(hold_until)
 
     has_active_hold = bool(hold_until and hold_until > timezone.now())
-    status = _slot_status(is_open, current_bookings, max_bookings)
+    status = _availability_status(is_open, current_bookings, max_bookings, hold_until)
     if current_bookings > 0 and status in ['available', 'limited']:
         status = 'full'
-    if has_active_hold and status in ['available', 'limited']:
-        status = 'held'
     available_spots = max(0, max_bookings - current_bookings)
 
     return {

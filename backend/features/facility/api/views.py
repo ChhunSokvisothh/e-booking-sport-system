@@ -14,6 +14,7 @@ from global_utils.view_helpers import (
     FacilityPagination,
     SlotPagination,
     _booked_slot_ids_for_user,
+    _availability_status,
     _date_bounds_for_query,
     _ensure_rolling_slot_window_cached,
     _release_expired_pending_bookings,
@@ -107,6 +108,14 @@ def live_slots_endpoint(request):
     requested_date, day_start, day_end = _date_bounds_for_query(date_str)
     now = timezone.now()
     local_today = timezone.localdate()
+    try:
+        page = max(1, int(request.query_params.get('page', '1')))
+    except ValueError:
+        page = 1
+    try:
+        page_size = min(100, max(10, int(request.query_params.get('page_size', '50'))))
+    except ValueError:
+        page_size = 50
 
     facilities_qs = Facility.objects.filter(is_active=True)
     if sport_type:
@@ -121,7 +130,15 @@ def live_slots_endpoint(request):
 
     facilities = list(facilities_qs)
     if not facilities:
-        return Response([])
+        return Response(
+            {
+                'count': 0,
+                'page': page,
+                'page_size': page_size,
+                'has_next': False,
+                'results': [],
+            }
+        )
 
     facility_map = {f.id: f for f in facilities}
     facility_map_by_str = {str(f.id): f for f in facilities}
@@ -130,7 +147,14 @@ def live_slots_endpoint(request):
     local_qs = TimeSlot.objects.select_related('facility').filter(facility__in=facilities)
     if day_start is not None and day_end is not None:
         local_qs = local_qs.filter(start_at__gte=day_start, start_at__lt=day_end)
-    local_slots = list(local_qs.order_by('start_at'))
+    if requested_date is None or requested_date == local_today:
+        local_qs = local_qs.filter(start_at__gte=now)
+    total_count = local_qs.count()
+    local_slots = list(
+        local_qs.order_by('start_at', 'id')[
+            (page - 1) * page_size : page * page_size
+        ]
+    )
     local_slot_map = {str(slot.id): slot for slot in local_slots}
 
     # Source of truth for availability must be Django DB to keep account views consistent.
@@ -182,7 +206,8 @@ def live_slots_endpoint(request):
             continue
 
         has_active_hold = bool(hold_until and hold_until > timezone.now())
-        is_available = is_open and current == 0 and not has_active_hold
+        availability_status = _availability_status(is_open, current, max_bookings, hold_until)
+        is_available = availability_status in ['available', 'limited']
 
         output.append(
             {
@@ -196,6 +221,7 @@ def live_slots_endpoint(request):
                 'max_bookings': max_bookings,
                 'is_open': is_open,
                 'is_available': is_available,
+                'availability_status': availability_status,
                 'slot_version': slot_version,
                 'reservation_hold_until': hold_until,
                 'booked_by_me': slot_id in booked_slot_ids,
@@ -212,7 +238,13 @@ def live_slots_endpoint(request):
             continue
 
         has_active_hold = bool(slot.reservation_hold_until and slot.reservation_hold_until > timezone.now())
-        is_available = slot.is_open and slot.current_bookings == 0 and not has_active_hold
+        availability_status = _availability_status(
+            slot.is_open,
+            slot.current_bookings,
+            slot.max_bookings,
+            slot.reservation_hold_until,
+        )
+        is_available = availability_status in ['available', 'limited']
         if slot.start_at < now and (requested_date is None or requested_date == local_today):
             continue
         output.append(
@@ -227,6 +259,7 @@ def live_slots_endpoint(request):
                 'max_bookings': slot.max_bookings,
                 'is_open': slot.is_open,
                 'is_available': is_available,
+                'availability_status': availability_status,
                 'slot_version': slot.slot_version,
                 'reservation_hold_until': slot.reservation_hold_until,
                 'booked_by_me': slot_id in booked_slot_ids,
@@ -251,7 +284,18 @@ def live_slots_endpoint(request):
                     'current_bookings': slot.current_bookings,
                     'max_bookings': slot.max_bookings,
                     'is_open': slot.is_open,
-                    'is_available': slot.has_space and not bool(slot.reservation_hold_until and slot.reservation_hold_until > timezone.now()),
+                    'is_available': _availability_status(
+                        slot.is_open,
+                        slot.current_bookings,
+                        slot.max_bookings,
+                        slot.reservation_hold_until,
+                    ) in ['available', 'limited'],
+                    'availability_status': _availability_status(
+                        slot.is_open,
+                        slot.current_bookings,
+                        slot.max_bookings,
+                        slot.reservation_hold_until,
+                    ),
                     'slot_version': slot.slot_version,
                     'reservation_hold_until': slot.reservation_hold_until,
                     'booked_by_me': str(slot.id) in booked_slot_ids,
@@ -262,7 +306,15 @@ def live_slots_endpoint(request):
             )
 
     output.sort(key=lambda item: item['start_at'])
-    return Response(output)
+    return Response(
+        {
+            'count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'has_next': page * page_size < total_count,
+            'results': output,
+        }
+    )
 
 
 @api_view(['GET'])

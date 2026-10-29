@@ -18,6 +18,7 @@ class AuthController {
     _ref.invalidate(dashboardSummaryProvider);
     _ref.invalidate(activeCouponsProvider);
     _ref.invalidate(ownerCouponsProvider);
+    _ref.invalidate(chatSessionsProvider);
     _ref.invalidate(facilityListProvider);
     _ref.invalidate(facilityListByQueryProvider);
     _ref.invalidate(facilityListByQueryWithDiagnosticsProvider);
@@ -40,6 +41,7 @@ class AuthController {
       userUuid: result['user_uuid'] as String,
       email: result['email'] as String,
       role: (result['role'] as String?) ?? current.role,
+      ownerStatus: result['owner_status'] as String? ?? current.ownerStatus,
     );
     _ref.read(authSessionProvider.notifier).state = updated;
     await persistAuthSession(updated);
@@ -52,6 +54,23 @@ class AuthController {
       'email': email,
       'password': password,
     });
+    await _saveSessionFromAuthResponse(result);
+  }
+
+  Future<void> ownerSignUp({
+    required String email,
+    required String password,
+    required String venueName,
+    required String contactPhone,
+  }) async {
+    final result = await _ref
+        .read(apiClientProvider)
+        .postJson('/api/auth/owner-signup/', {
+          'email': email,
+          'password': password,
+          'venue_name': venueName,
+          'contact_phone': contactPhone,
+        });
     await _saveSessionFromAuthResponse(result);
   }
 
@@ -87,6 +106,7 @@ class AuthController {
       userUuid: json['user_uuid'] as String,
       email: json['email'] as String,
       role: (json['role'] as String?) ?? 'user',
+      ownerStatus: json['owner_status'] as String?,
     );
     _ref.read(authSessionProvider.notifier).state = session;
     await persistAuthSession(session);

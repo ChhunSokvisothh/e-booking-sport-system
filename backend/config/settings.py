@@ -103,6 +103,13 @@ if not CORS_ALLOW_ALL_ORIGINS:
         for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') 
         if origin.strip()
     ]
+    if 'https://ebooking-app-1.onrender.com' not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append('https://ebooking-app-1.onrender.com')
+    # Flutter's web development server chooses an available port, so allow
+    # local development origins without opening CORS to external sites.
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r'^https?://(localhost|127\.0\.0\.1)(:\d+)?$',
+    ]
 
 # CSRF Trusted Origins for Render host
 CSRF_TRUSTED_ORIGINS = [

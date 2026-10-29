@@ -9,6 +9,8 @@ import '../shared/config/app_config.dart';
 class TelegramAuthService {
   static http.Client? _activeClient;
   static bool _cancelled = false;
+  static Uri? _activeTelegramAppUri;
+  static Uri? _activeTelegramWebUri;
 
   static const String _botUsername = String.fromEnvironment(
     'TELEGRAM_BOT_USERNAME',
@@ -19,6 +21,29 @@ class TelegramAuthService {
     _cancelled = true;
     _activeClient?.close();
     _activeClient = null;
+    _activeTelegramAppUri = null;
+    _activeTelegramWebUri = null;
+  }
+
+  static Future<bool> openTelegram() async {
+    final appUri = _activeTelegramAppUri;
+    if (appUri != null) {
+      try {
+        if (await launchUrl(appUri, mode: LaunchMode.externalApplication)) {
+          return true;
+        }
+      } catch (_) {
+        // Fall back to Telegram's HTTPS link if tg:// is unavailable.
+      }
+    }
+
+    final webUri = _activeTelegramWebUri;
+    if (webUri == null) return false;
+    try {
+      return await launchUrl(webUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<Map<String, dynamic>> login({void Function(String code)? onCodeCreated}) async {
@@ -45,8 +70,13 @@ class TelegramAuthService {
       onCodeCreated?.call(code);
 
       final username = _botUsername.startsWith('@') ? _botUsername.substring(1) : _botUsername;
-      final telegramUri = Uri.https('t.me', '/$username', {'start': code});
-      if (!await launchUrl(telegramUri, mode: LaunchMode.externalApplication)) {
+      _activeTelegramAppUri = Uri(
+        scheme: 'tg',
+        host: 'resolve',
+        queryParameters: {'domain': username, 'start': code},
+      );
+      _activeTelegramWebUri = Uri.https('t.me', '/$username', {'start': code});
+      if (!await openTelegram()) {
         throw Exception('Could not open Telegram.');
       }
 
@@ -83,6 +113,8 @@ class TelegramAuthService {
       if (identical(_activeClient, client)) {
         _activeClient = null;
       }
+      _activeTelegramAppUri = null;
+      _activeTelegramWebUri = null;
     }
   }
 

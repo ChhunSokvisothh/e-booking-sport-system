@@ -19,8 +19,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _venueNameCtrl = TextEditingController();
+  final _contactPhoneCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSignUp = false;
+  bool _isOwnerRegistration = false;
   bool _loading = false;
   bool _telegramLoading = false;
   String? _telegramStartCode;
@@ -35,6 +38,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
+    _venueNameCtrl.dispose();
+    _contactPhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -48,14 +53,31 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     try {
       if (_isSignUp) {
-        await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
+        if (_isOwnerRegistration) {
+          await auth.ownerSignUp(
+            email: _emailCtrl.text.trim(),
+            password: _passwordCtrl.text.trim(),
+            venueName: _venueNameCtrl.text.trim(),
+            contactPhone: _contactPhoneCtrl.text.trim(),
+          );
+        } else {
+          await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
+        }
       } else {
         await auth.login(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_isSignUp ? 'Account created and logged in.' : 'Logged in')),
+          SnackBar(
+            content: Text(
+              _isOwnerRegistration
+                  ? 'Venue owner account created and logged in.'
+                  : _isSignUp
+                      ? 'Account created and logged in.'
+                      : 'Logged in',
+            ),
+          ),
         );
 
         final session = ref.read(authSessionProvider);
@@ -184,12 +206,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   child: _AuthCard(
                                     formKey: _formKey,
                                     isSignUp: _isSignUp,
+                                    isOwnerRegistration: _isOwnerRegistration,
                                     loading: _loading,
                                     telegramLoading: _telegramLoading,
                                     telegramStartCode: _telegramStartCode,
                                     emailCtrl: _emailCtrl,
                                     passwordCtrl: _passwordCtrl,
                                     confirmCtrl: _confirmCtrl,
+                                    venueNameCtrl: _venueNameCtrl,
+                                    contactPhoneCtrl: _contactPhoneCtrl,
                                     onTelegramLogin: _telegramLogin,
                                     onPasswordChanged: () => setState(() {}),
                                     obscurePassword: _obscurePassword,
@@ -202,7 +227,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     },
                                     onSubmit: _submit,
                                     onToggleMode: () {
-                                      setState(() => _isSignUp = !_isSignUp);
+                                      setState(() {
+                                        _isSignUp = !_isSignUp;
+                                        if (!_isSignUp) {
+                                          _isOwnerRegistration = false;
+                                        }
+                                      });
+                                    },
+                                    onToggleOwnerRegistration: () {
+                                      setState(() => _isOwnerRegistration = !_isOwnerRegistration);
                                     },
                                   ),
                                 ),
@@ -215,12 +248,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 _AuthCard(
                                   formKey: _formKey,
                                   isSignUp: _isSignUp,
+                                  isOwnerRegistration: _isOwnerRegistration,
                                   loading: _loading,
                                   telegramLoading: _telegramLoading,
                                   telegramStartCode: _telegramStartCode,
                                   emailCtrl: _emailCtrl,
                                   passwordCtrl: _passwordCtrl,
                                   confirmCtrl: _confirmCtrl,
+                                  venueNameCtrl: _venueNameCtrl,
+                                  contactPhoneCtrl: _contactPhoneCtrl,
                                   onTelegramLogin: _telegramLogin,
                                   onPasswordChanged: () => setState(() {}),
                                   obscurePassword: _obscurePassword,
@@ -233,7 +269,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   },
                                   onSubmit: _submit,
                                   onToggleMode: () {
-                                    setState(() => _isSignUp = !_isSignUp);
+                                    setState(() {
+                                      _isSignUp = !_isSignUp;
+                                      if (!_isSignUp) {
+                                        _isOwnerRegistration = false;
+                                      }
+                                    });
+                                  },
+                                  onToggleOwnerRegistration: () {
+                                    setState(() => _isOwnerRegistration = !_isOwnerRegistration);
                                   },
                                 ),
                               ],
@@ -335,12 +379,15 @@ class _AuthCard extends StatelessWidget {
   const _AuthCard({
     required this.formKey,
     required this.isSignUp,
+    required this.isOwnerRegistration,
     required this.loading,
     required this.telegramLoading,
     required this.telegramStartCode,
     required this.emailCtrl,
     required this.passwordCtrl,
     required this.confirmCtrl,
+    required this.venueNameCtrl,
+    required this.contactPhoneCtrl,
     required this.onTelegramLogin,
     required this.onPasswordChanged,
     required this.obscurePassword,
@@ -349,16 +396,20 @@ class _AuthCard extends StatelessWidget {
     required this.onToggleObscureConfirm,
     required this.onSubmit,
     required this.onToggleMode,
+    required this.onToggleOwnerRegistration,
   });
 
   final GlobalKey<FormState> formKey;
   final bool isSignUp;
+  final bool isOwnerRegistration;
   final bool loading;
   final bool telegramLoading;
   final String? telegramStartCode;
   final TextEditingController emailCtrl;
   final TextEditingController passwordCtrl;
   final TextEditingController confirmCtrl;
+  final TextEditingController venueNameCtrl;
+  final TextEditingController contactPhoneCtrl;
   final VoidCallback onTelegramLogin;
   final VoidCallback onPasswordChanged;
   final bool obscurePassword;
@@ -367,6 +418,7 @@ class _AuthCard extends StatelessWidget {
   final VoidCallback onToggleObscureConfirm;
   final VoidCallback onSubmit;
   final VoidCallback onToggleMode;
+  final VoidCallback onToggleOwnerRegistration;
 
   @override
   Widget build(BuildContext context) {
@@ -383,23 +435,45 @@ class _AuthCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (isSignUp) ...[
-                _TelegramOption(
-                  isSignUp: true,
-                  loading: telegramLoading,
-                  startCode: telegramStartCode,
-                  onOpenTelegram: TelegramAuthService.openTelegram,
-                  onPressed: onTelegramLogin,
-                  onCancel: TelegramAuthService.cancel,
+                Text(
+                  'Account type',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: Icon(Icons.person_outline),
+                      label: Text('Book sports'),
+                    ),
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: Icon(Icons.storefront_outlined),
+                      label: Text('Register venue'),
+                    ),
+                  ],
+                  selected: {isOwnerRegistration},
+                  onSelectionChanged: loading ? null : (_) => onToggleOwnerRegistration(),
+                  showSelectedIcon: false,
                 ),
                 const SizedBox(height: 18),
               ],
               Text(
-                isSignUp ? 'Create Account' : 'Welcome Back',
+                isSignUp
+                    ? isOwnerRegistration
+                        ? 'Register Your Venue'
+                        : 'Create Account'
+                    : 'Welcome Back',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
-                isSignUp ? 'Use your email to join and start booking.' : 'Login to access your account homepage.',
+                isSignUp
+                    ? isOwnerRegistration
+                        ? 'Create an owner account to manage your sports venue.'
+                        : 'Use your email to join and start booking.'
+                    : 'Login to access your account homepage.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -426,6 +500,32 @@ class _AuthCard extends StatelessWidget {
                 ),
                 validator: Validators.password,
               ),
+              if (isSignUp && isOwnerRegistration) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: venueNameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Venue name',
+                    prefixIcon: Icon(Icons.storefront_outlined),
+                  ),
+                  validator: (value) {
+                    if ((value ?? '').trim().isEmpty) {
+                      return 'Venue name is required';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: contactPhoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Contact phone (optional)',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                ),
+              ],
               if (isSignUp) ...[
                 const SizedBox(height: 8),
                 _PasswordRequirement(
@@ -483,7 +583,7 @@ class _AuthCard extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: loading ? null : onToggleMode,
+                  onPressed: loading || telegramLoading ? null : onToggleMode,
                   child: Text(isSignUp ? 'Already have account? Login' : 'No account? Sign up'),
                 ),
               ),

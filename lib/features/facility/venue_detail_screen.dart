@@ -92,6 +92,48 @@ class VenueDetailScreen extends StatelessWidget {
                 : facility.description,
             style: TextStyle(color: Colors.grey.shade700, height: 1.45),
           ),
+          if (facility.surfaceType.trim().isNotEmpty || facility.courtCount > 0) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (facility.surfaceType.trim().isNotEmpty)
+                  _TagChip(label: facility.surfaceType.toUpperCase()),
+                _TagChip(label: '${facility.courtCount} COURT${facility.courtCount == 1 ? '' : 'S'}'),
+              ],
+            ),
+          ],
+          if (facility.amenities.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Amenities', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: facility.amenities.map((amenity) => _TagChip(label: amenity)).toList(),
+            ),
+          ],
+          if (facility.contactPhone.trim().isNotEmpty || facility.websiteUrl.trim().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Contact', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            if (facility.contactPhone.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Phone: ${facility.contactPhone}', style: TextStyle(color: Colors.grey.shade700)),
+              ),
+            if (facility.websiteUrl.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(facility.websiteUrl, style: TextStyle(color: Colors.grey.shade700)),
+              ),
+          ],
+          if (facility.cancellationPolicy.trim().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Cancellation policy', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text(facility.cancellationPolicy, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
+          ],
           const SizedBox(height: 18),
           FilledButton.icon(
             onPressed: onBook,

@@ -1,37 +1,18 @@
-# Owner application email setup
+# In-app owner application review
 
-Owner registration creates a `core.OwnerApplication` row with status `pending` and sends an email notification to the configured administrator. It does **not** grant owner/staff access. An administrator must approve the application in Django Admin; the existing admin action grants staff access on approval.
+No email is sent for owner applications. When a prospective venue owner registers, the backend creates an `OwnerApplication` record with `pending` status. The authenticated superadmin reviews the request inside the Flutter app.
 
-## Render environment variables
+## In-app workflow
 
-Set these on the Django backend service in Render:
+1. The user submits an owner application.
+2. A superadmin signs in and opens Profile → Owner requests.
+3. The app loads pending requests from `GET /api/admin/owner-applications/?status=pending`.
+4. The superadmin approves or rejects through `POST /api/admin/owner-applications/<id>/review/` with JSON `{"decision":"approve"}` or `{"decision":"reject"}`.
 
-- `OWNER_APPLICATION_ADMIN_EMAIL=visoth079@gmail.com`
-- `EMAIL_HOST=smtp.gmail.com`
-- `EMAIL_PORT=587`
-- `EMAIL_USE_TLS=true`
-- `EMAIL_USE_SSL=false`
-- `EMAIL_HOST_USER=<the Gmail account used to send notifications>`
-- `EMAIL_HOST_PASSWORD=<a Google App Password for that sender account>`
-- `DEFAULT_FROM_EMAIL=<the same sender Gmail address>`
+Both endpoints require token authentication and `request.user.is_superuser == True`. Requests from ordinary users and venue owners receive HTTP 403.
 
-Use a Google App Password, not the sender's normal Gmail password. Keep the password only in Render's environment variables; never commit it to Git.
+Approving grants the applicant staff/owner access. Rejecting marks the application rejected but leaves the account in place. The API reuses the existing `OwnerApplication` model; no new database migration is needed.
 
-The recipient address is configurable. If `OWNER_APPLICATION_ADMIN_EMAIL` is omitted, it defaults to `visoth079@gmail.com`.
+## Deployment
 
-## Admin review
-
-After deployment, sign into `/admin/` with a Django staff/superuser account. Open **Core → Owner applications**, select pending applications, and use **Approve selected owner applications**. Approved users get owner/staff access on their next login.
-
-If SMTP is unavailable, the application is still saved as pending and the backend logs the email error. Check Render logs and verify the SMTP environment variables.
-
-## Database migrations
-
-This change reuses the existing `OwnerApplication` model and does not add or alter database fields, so it does not require a new migration. Do not delete or rewrite already-applied migration files. For deployment, run the project's normal migration command only if other model changes are pending:
-
-```powershell
-cd backend
-python manage.py showmigrations core
-python manage.py migrate
-python manage.py check
-```
+Deploy the backend and Flutter changes together. The superadmin should sign out and sign back in (or refresh their session) so the app receives the `is_superuser` flag from `/api/auth/me/`. Ensure the intended administrator account has Django's `is_superuser=True` in the same database used by the Render backend.

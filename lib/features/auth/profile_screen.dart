@@ -9,6 +9,7 @@ import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
+import '../admin/owner_application_admin_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -138,6 +139,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
       children: [
+        if (session?.isSuperuser == true)
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.admin_panel_settings_outlined),
+              ),
+              title: const Text(
+                'Owner requests',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: const Text('Review and approve venue owner applications'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const OwnerApplicationAdminScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(

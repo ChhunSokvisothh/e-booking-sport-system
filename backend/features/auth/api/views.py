@@ -1,5 +1,9 @@
 
+import logging
+
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -15,20 +19,36 @@ from global_utils.view_helpers import (
 )
 from core.models import OwnerApplication
 
-def _ensure_owner_access(user):
-    application = OwnerApplication.objects.filter(user_id=user.id).first()
-    if application is None:
-        return
-    fields = []
-    if application.status != OwnerApplication.Status.APPROVED:
-        application.status = OwnerApplication.Status.APPROVED
-        application.reviewed_at = timezone.now()
-        fields.extend(['status', 'reviewed_at'])
-    if fields:
-        application.save(update_fields=fields)
-    if not user.is_staff:
-        user.is_staff = True
-        user.save(update_fields=['is_staff'])
+logger = logging.getLogger(__name__)
+
+
+def _notify_admin_of_owner_application(application):
+    """Email the configured administrator; submission succeeds even if SMTP is down."""
+    subject = f'New venue owner application: {application.venue_name}'
+    message = (
+        'A new venue owner application has been submitted.\n\n'
+        f'Venue: {application.venue_name}\n'
+        f'Applicant email: {application.user.email}\n'
+        f'Contact phone: {application.contact_phone or "Not provided"}\n'
+        f'Status: {application.status}\n\n'
+        'Review it in Django Admin under Core → Owner applications.\n'
+        'Admin path: /admin/core/ownerapplication/'
+    )
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.OWNER_APPLICATION_ADMIN_EMAIL],
+            fail_silently=False,
+        )
+        if sent != 1:
+            logger.error('Owner application email was not sent for application %s.', application.pk)
+            return False
+        return True
+    except Exception:
+        logger.exception('Could not email administrator about owner application %s.', application.pk)
+        return False
 
 def _auth_payload(user, token):
     owner_status = (
@@ -78,19 +98,18 @@ def owner_signup(request):
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
     user = User.objects.create_user(username=email, email=email, password=password)
-    user.is_staff = True
-    user.save(update_fields=['is_staff'])
-    OwnerApplication.objects.create(
+    application = OwnerApplication.objects.create(
         user=user,
         venue_name=venue_name,
         contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
+        status=OwnerApplication.Status.PENDING,
     )
+    notification_sent = _notify_admin_of_owner_application(application)
     token, _ = Token.objects.get_or_create(user=user)
     return Response({
         **_auth_payload(user, token),
-        'message': 'Admin venue account created. You can now use the owner dashboard.',
+        'message': 'Your venue owner application has been submitted and is awaiting administrator review.',
+        'notification_sent': notification_sent,
     }, status=status.HTTP_201_CREATED)
 
 
@@ -112,7 +131,7 @@ def auth_login(request):
     if user is None:
         return Response({'error': 'invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    _ensure_owner_access(user)
+    # Owner access is granted only after an administrator approves the application.
     token, _ = Token.objects.get_or_create(user=user)
     return Response(_auth_payload(user, token))
 

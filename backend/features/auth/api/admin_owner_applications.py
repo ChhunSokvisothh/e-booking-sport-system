@@ -46,7 +46,7 @@ def admin_owner_applications(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def review_owner_application(request, application_id):
-    """Approve or reject a request; only staff/superusers may call this."""
+    """Approve or reject a request; only superusers may call this."""
     if not _require_admin(request):
         return Response({'error': 'Administrator access required.'},
                         status=status.HTTP_403_FORBIDDEN)

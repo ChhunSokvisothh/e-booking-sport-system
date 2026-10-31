@@ -28,6 +28,7 @@ def _auth_payload(user, token):
         'user_uuid': str(_uuid_from_user(user)),
         'email': user.email,
         'role': _role_for_user(user),
+        'is_superuser': user.is_superuser,
         'owner_status': owner_status,
     }
 
@@ -121,6 +122,7 @@ def auth_me(request):
             'user_uuid': str(_uuid_from_user(request.user)),
             'email': request.user.email,
             'role': _role_for_user(request.user),
+            'is_superuser': request.user.is_superuser,
             'owner_status': owner_status,
         }
     )

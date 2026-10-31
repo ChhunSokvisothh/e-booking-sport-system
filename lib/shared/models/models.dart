@@ -11,6 +11,14 @@ class Facility {
     required this.basePricePerHour,
     required this.rating,
     required this.imageUrl,
+    this.galleryImageUrls = const [],
+    this.amenities = const [],
+    this.openingHours = const {},
+    this.contactPhone = '',
+    this.websiteUrl = '',
+    this.surfaceType = '',
+    this.cancellationPolicy = '',
+    this.courtCount = 1,
     required this.isActive,
     required this.archivedAt,
   });
@@ -26,6 +34,14 @@ class Facility {
   final double basePricePerHour;
   final double rating;
   final String? imageUrl;
+  final List<String> galleryImageUrls;
+  final List<String> amenities;
+  final Map<String, dynamic> openingHours;
+  final String contactPhone;
+  final String websiteUrl;
+  final String surfaceType;
+  final String cancellationPolicy;
+  final int courtCount;
   final bool isActive;
   final DateTime? archivedAt;
 
@@ -53,6 +69,20 @@ class Facility {
       basePricePerHour: _toDouble(json['base_price_per_hour']),
       rating: _toDouble(json['rating'], fallback: 4.5),
       imageUrl: (image == null || image.isEmpty) ? null : image,
+      galleryImageUrls: (json['gallery_image_urls'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      amenities: (json['amenities'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      openingHours: Map<String, dynamic>.from(
+        json['opening_hours'] as Map? ?? const {},
+      ),
+      contactPhone: json['contact_phone'] as String? ?? '',
+      websiteUrl: json['website_url'] as String? ?? '',
+      surfaceType: json['surface_type'] as String? ?? '',
+      cancellationPolicy: json['cancellation_policy'] as String? ?? '',
+      courtCount: json['court_count'] as int? ?? 1,
       isActive: json['is_active'] as bool? ?? true,
       archivedAt: (json['archived_at'] as String?) == null
           ? null

@@ -92,6 +92,48 @@ class VenueDetailScreen extends StatelessWidget {
                 : facility.description,
             style: TextStyle(color: Colors.grey.shade700, height: 1.45),
           ),
+          if (facility.surfaceType.trim().isNotEmpty || facility.courtCount > 0) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (facility.surfaceType.trim().isNotEmpty)
+                  _TagChip(label: facility.surfaceType.toUpperCase()),
+                _TagChip(label: '${facility.courtCount} COURT${facility.courtCount == 1 ? '' : 'S'}'),
+              ],
+            ),
+          ],
+          if (facility.amenities.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Amenities', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: facility.amenities.map((amenity) => _TagChip(label: amenity)).toList(),
+            ),
+          ],
+          if (facility.contactPhone.trim().isNotEmpty || facility.websiteUrl.trim().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Contact', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            if (facility.contactPhone.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Phone: ${facility.contactPhone}', style: TextStyle(color: Colors.grey.shade700)),
+              ),
+            if (facility.websiteUrl.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(facility.websiteUrl, style: TextStyle(color: Colors.grey.shade700)),
+              ),
+          ],
+          if (facility.cancellationPolicy.trim().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Cancellation policy', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text(facility.cancellationPolicy, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
+          ],
           const SizedBox(height: 18),
           FilledButton.icon(
             onPressed: onBook,
@@ -129,6 +171,32 @@ class VenueDetailScreen extends StatelessWidget {
               width: double.infinity,
             ),
           ),
+          if (facility.galleryImageUrls.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: facility.galleryImageUrls.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) => ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.network(
+                    facility.galleryImageUrls[index],
+                    width: 128,
+                    height: 92,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 128,
+                      height: 92,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image_outlined),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           if (!isWide) infoCard,
           if (isWide)

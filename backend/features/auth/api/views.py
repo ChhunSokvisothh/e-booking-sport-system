@@ -1,9 +1,5 @@
 
-import logging
-
-from django.conf import settings
 from django.contrib.auth import authenticate
-from django.core.mail import send_mail
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -18,37 +14,6 @@ from global_utils.view_helpers import (
     _uuid_from_user,
 )
 from core.models import OwnerApplication
-
-logger = logging.getLogger(__name__)
-
-
-def _notify_admin_of_owner_application(application):
-    """Email the configured administrator; submission succeeds even if SMTP is down."""
-    subject = f'New venue owner application: {application.venue_name}'
-    message = (
-        'A new venue owner application has been submitted.\n\n'
-        f'Venue: {application.venue_name}\n'
-        f'Applicant email: {application.user.email}\n'
-        f'Contact phone: {application.contact_phone or "Not provided"}\n'
-        f'Status: {application.status}\n\n'
-        'Review it in Django Admin under Core → Owner applications.\n'
-        'Admin path: /admin/core/ownerapplication/'
-    )
-    try:
-        sent = send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[settings.OWNER_APPLICATION_ADMIN_EMAIL],
-            fail_silently=False,
-        )
-        if sent != 1:
-            logger.error('Owner application email was not sent for application %s.', application.pk)
-            return False
-        return True
-    except Exception:
-        logger.exception('Could not email administrator about owner application %s.', application.pk)
-        return False
 
 def _auth_payload(user, token):
     owner_status = (
@@ -104,12 +69,10 @@ def owner_signup(request):
         contact_phone=phone,
         status=OwnerApplication.Status.PENDING,
     )
-    notification_sent = _notify_admin_of_owner_application(application)
     token, _ = Token.objects.get_or_create(user=user)
     return Response({
         **_auth_payload(user, token),
         'message': 'Your venue owner application has been submitted and is awaiting administrator review.',
-        'notification_sent': notification_sent,
     }, status=status.HTTP_201_CREATED)
 
 

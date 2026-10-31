@@ -129,6 +129,32 @@ class VenueDetailScreen extends StatelessWidget {
               width: double.infinity,
             ),
           ),
+          if (facility.galleryImageUrls.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: facility.galleryImageUrls.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) => ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.network(
+                    facility.galleryImageUrls[index],
+                    width: 128,
+                    height: 92,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 128,
+                      height: 92,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image_outlined),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           if (!isWide) infoCard,
           if (isWide)

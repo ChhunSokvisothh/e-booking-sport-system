@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
+import '../facility/facility_providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
+import '../admin/owner_application_admin_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -21,6 +23,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _pushEnabled = true;
   bool _offersEnabled = false;
   bool _loadingPrefs = true;
+  int _pendingOwnerRequestCount = 0;
 
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _cityController = TextEditingController(text: 'Phnom Penh');
@@ -47,6 +50,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _loadPrefs();
+    _loadPendingOwnerRequestCount();
   }
 
   @override
@@ -70,6 +74,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _profileImageBase64 = prefs.getString('profile_image_base64');
       _loadingPrefs = false;
     });
+  }
+
+  Future<void> _loadPendingOwnerRequestCount() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null || !session.isSuperuser) return;
+    try {
+      final rows = await ref.read(apiClientProvider).getList(
+        '/api/admin/owner-applications/',
+        const {'status': 'pending'},
+        session.token,
+      );
+      if (!mounted) return;
+      setState(() => _pendingOwnerRequestCount = rows.length);
+    } catch (_) {
+      // Keep the profile usable if the request queue cannot be reached.
+    }
   }
 
   Future<void> _savePrefs() async {
@@ -138,6 +158,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
       children: [
+        if (session?.isSuperuser == true)
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.admin_panel_settings_outlined),
+              ),
+              title: const Text(
+                'Owner requests',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: const Text('Review and approve venue owner applications'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_pendingOwnerRequestCount > 0)
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      child: Text(
+                        _pendingOwnerRequestCount > 99
+                            ? '99+'
+                            : '$_pendingOwnerRequestCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const OwnerApplicationAdminScreen(),
+                  ),
+                );
+                await _loadPendingOwnerRequestCount();
+              },
+            ),
+          ),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(

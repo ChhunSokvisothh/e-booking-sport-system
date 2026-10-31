@@ -72,7 +72,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           SnackBar(
             content: Text(
               _isOwnerRegistration
-                  ? 'Venue owner account created and logged in.'
+                  ? 'Application submitted. Owner features unlock after admin approval.'
                   : _isSignUp
                       ? 'Account created and logged in.'
                       : 'Logged in',

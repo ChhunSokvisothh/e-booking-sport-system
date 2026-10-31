@@ -15,21 +15,6 @@ from global_utils.view_helpers import (
 )
 from core.models import OwnerApplication
 
-def _ensure_owner_access(user):
-    application = OwnerApplication.objects.filter(user_id=user.id).first()
-    if application is None:
-        return
-    fields = []
-    if application.status != OwnerApplication.Status.APPROVED:
-        application.status = OwnerApplication.Status.APPROVED
-        application.reviewed_at = timezone.now()
-        fields.extend(['status', 'reviewed_at'])
-    if fields:
-        application.save(update_fields=fields)
-    if not user.is_staff:
-        user.is_staff = True
-        user.save(update_fields=['is_staff'])
-
 def _auth_payload(user, token):
     owner_status = (
         OwnerApplication.objects
@@ -43,6 +28,7 @@ def _auth_payload(user, token):
         'user_uuid': str(_uuid_from_user(user)),
         'email': user.email,
         'role': _role_for_user(user),
+        'is_superuser': user.is_superuser,
         'owner_status': owner_status,
     }
 
@@ -78,19 +64,16 @@ def owner_signup(request):
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
     user = User.objects.create_user(username=email, email=email, password=password)
-    user.is_staff = True
-    user.save(update_fields=['is_staff'])
-    OwnerApplication.objects.create(
+    application = OwnerApplication.objects.create(
         user=user,
         venue_name=venue_name,
         contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
+        status=OwnerApplication.Status.PENDING,
     )
     token, _ = Token.objects.get_or_create(user=user)
     return Response({
         **_auth_payload(user, token),
-        'message': 'Admin venue account created. You can now use the owner dashboard.',
+        'message': 'Your venue owner application has been submitted and is awaiting administrator review.',
     }, status=status.HTTP_201_CREATED)
 
 
@@ -112,7 +95,7 @@ def auth_login(request):
     if user is None:
         return Response({'error': 'invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    _ensure_owner_access(user)
+    # Owner access is granted only after an administrator approves the application.
     token, _ = Token.objects.get_or_create(user=user)
     return Response(_auth_payload(user, token))
 
@@ -139,6 +122,7 @@ def auth_me(request):
             'user_uuid': str(_uuid_from_user(request.user)),
             'email': request.user.email,
             'role': _role_for_user(request.user),
+            'is_superuser': request.user.is_superuser,
             'owner_status': owner_status,
         }
     )

@@ -42,6 +42,7 @@ class AuthController {
       email: result['email'] as String,
       role: (result['role'] as String?) ?? current.role,
       ownerStatus: result['owner_status'] as String? ?? current.ownerStatus,
+      isSuperuser: result['is_superuser'] as bool? ?? current.isSuperuser,
     );
     _ref.read(authSessionProvider.notifier).state = updated;
     await persistAuthSession(updated);
@@ -111,6 +112,7 @@ class AuthController {
       email: json['email'] as String,
       role: (json['role'] as String?) ?? 'user',
       ownerStatus: json['owner_status'] as String?,
+      isSuperuser: json['is_superuser'] as bool? ?? false,
     );
     _ref.read(authSessionProvider.notifier).state = session;
     await persistAuthSession(session);

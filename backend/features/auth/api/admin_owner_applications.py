@@ -9,7 +9,7 @@ from core.models import OwnerApplication
 
 def _require_admin(request):
     return bool(request.user and request.user.is_authenticated and
-                (request.user.is_superuser or request.user.is_staff))
+                request.user.is_superuser)
 
 
 @api_view(['GET'])

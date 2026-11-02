@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -528,84 +530,11 @@ class VenueDetailScreen extends StatelessWidget {
     required String fallbackImageUrl,
     required double height,
   }) {
-    if (images.isEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: _AssetOrNetworkImage(
-          assetPath: assetPath,
-          fallbackImageUrl: fallbackImageUrl,
-          height: height,
-          width: double.infinity,
-          fit: BoxFit.cover,
-        ),
-      );
-    }
-
-    return SizedBox(
+    return _AutoRotatingGallery(
+      images: images,
+      assetPath: assetPath,
+      fallbackImageUrl: fallbackImageUrl,
       height: height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _AssetOrNetworkImage(
-              networkImageUrl: images.first,
-              assetPath: assetPath,
-              fallbackImageUrl: fallbackImageUrl,
-              height: height,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-            if (images.length > 1)
-              Positioned(
-                right: 12,
-                bottom: 12,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.68),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.black,
-                        builder: (context) => _GalleryViewer(
-                          images: images,
-                          initialIndex: 0,
-                        ),
-                      );
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.grid_view_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'View all photos',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -707,6 +636,152 @@ class VenueDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AutoRotatingGallery extends StatefulWidget {
+  const _AutoRotatingGallery({
+    required this.images,
+    required this.assetPath,
+    required this.fallbackImageUrl,
+    required this.height,
+  });
+
+  final List<String> images;
+  final String assetPath;
+  final String fallbackImageUrl;
+  final double height;
+
+  @override
+  State<_AutoRotatingGallery> createState() => _AutoRotatingGalleryState();
+}
+
+class _AutoRotatingGalleryState extends State<_AutoRotatingGallery> {
+  late final PageController _controller;
+  Timer? _timer;
+  int _index = 0;
+  bool _touching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    if (widget.images.length < 2) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || _touching || !_controller.hasClients) return;
+      final next = (_index + 1) % widget.images.length;
+      _controller.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.images.isEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: _AssetOrNetworkImage(
+          assetPath: widget.assetPath,
+          fallbackImageUrl: widget.fallbackImageUrl,
+          height: widget.height,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: SizedBox(
+        height: widget.height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Listener(
+              onPointerDown: (_) => _touching = true,
+              onPointerUp: (_) {
+                _touching = false;
+                _startTimer();
+              },
+              onPointerCancel: (_) {
+                _touching = false;
+                _startTimer();
+              },
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: widget.images.length,
+                onPageChanged: (index) => setState(() => _index = index),
+                itemBuilder: (context, index) => _AssetOrNetworkImage(
+                  networkImageUrl: widget.images[index],
+                  assetPath: widget.assetPath,
+                  fallbackImageUrl: widget.fallbackImageUrl,
+                  height: widget.height,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            if (widget.images.length > 1)
+              Positioned(
+                bottom: 14,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(widget.images.length, (index) {
+                    final selected = index == _index;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: selected ? 20 : 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : Colors.white70,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            if (widget.images.length > 1)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '${_index + 1}/${widget.images.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

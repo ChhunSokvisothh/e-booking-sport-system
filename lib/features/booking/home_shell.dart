@@ -130,6 +130,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         ),
         onOpenExplore: () => _goToTab(1),
         onOpenHistory: () => _goToTab(2),
+        onBookFacility: (facility) => _openQuickBook(
+          initialSportType: facility.sportType,
+          initialFacilityId: facility.id.toString(),
+        ),
       ),
       ExploreScreen(onOpenDashboard: () => _goToTab(0)),
       const BookingScreen(),

@@ -366,3 +366,22 @@ class FavoriteFacility(models.Model):
 
     def __str__(self):
         return f'{self.user_id} saved {self.facility_id}'
+
+
+class TelegramInvoiceDelivery(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        SENT = 'sent', 'Sent'
+        FAILED = 'failed', 'Failed'
+
+    booking = models.OneToOneField('core.Booking', on_delete=models.CASCADE, related_name='telegram_invoice_delivery')
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='telegram_invoice_deliveries')
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']

@@ -17,7 +17,18 @@ class FacilitySerializer(serializers.ModelSerializer):
             'longitude',
             'base_price_per_hour',
             'rating',
+            
             'image_url',
+            'gallery_image_urls',
+            'amenities',
+            'opening_hours',
+            'contact_phone',
+            'website_url',
+            'surface_type',
+            'cancellation_policy',
+            'court_count',
+            'owner_user_id',
+
             'owner_user_id',
             'is_active',
             'archived_at',

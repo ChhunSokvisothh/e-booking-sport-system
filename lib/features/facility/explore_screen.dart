@@ -6,6 +6,7 @@ import '../../shared/models/models.dart';
 import '../../shared/ui/sport_visuals.dart';
 import '../booking/quick_book_screen.dart';
 import 'facility_providers.dart';
+import 'venue_detail_screen.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({
@@ -281,17 +282,23 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       visual: visual,
                       bookedSlotCount: bookedCountByFacility[facility.id.toString()] ?? 0,
                       onTap: () {
-                        final matchingSlots = (liveSlotsAsync.asData?.value ?? const <LiveSlotAvailability>[])
-                            .where((slot) => slot.facilityId == facility.id.toString())
-                            .toList()
-                          ..sort((a, b) => a.startAt.compareTo(b.startAt));
                         Navigator.of(context).push(
                           buildSlideFadeRoute(
-                            QuickBookScreen(
-                              onOpenDashboard: widget.onOpenDashboard,
-                              initialSportType: facility.sportType,
-                              initialFacilityId: facility.id.toString(),
-                              initialSlots: matchingSlots.isEmpty ? null : matchingSlots,
+                            VenueDetailScreen(
+                              facility: facility,
+                              openHours: 'Contact venue for opening hours',
+                              rating: facility.rating,
+                              onBook: () {
+                                Navigator.of(context).push(
+                                  buildSlideFadeRoute(
+                                    QuickBookScreen(
+                                      onOpenDashboard: widget.onOpenDashboard,
+                                      initialSportType: facility.sportType,
+                                      initialFacilityId: facility.id.toString(),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         );

@@ -61,7 +61,21 @@ class Facility(models.Model):
     longitude = models.FloatField(default=104.9282)
     base_price_per_hour = models.DecimalField(max_digits=10, decimal_places=2)
     rating = models.DecimalField(max_digits=2, decimal_places=1, default=Decimal('4.5'))
+    
+    # Existing field
     image_url = models.URLField(blank=True)
+
+    # New venue detail fields
+    gallery_image_urls = models.JSONField(default=list, blank=True)
+    amenities = models.JSONField(default=list, blank=True)
+    opening_hours = models.CharField(max_length=255, blank=True)
+    contact_phone = models.CharField(max_length=30, blank=True)
+    website_url = models.URLField(blank=True)
+    surface_type = models.CharField(max_length=100, blank=True)
+    cancellation_policy = models.TextField(blank=True)
+    court_count = models.PositiveIntegerField(default=1)
+
+
     owner_user_id = models.UUIDField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     archived_at = models.DateTimeField(null=True, blank=True)

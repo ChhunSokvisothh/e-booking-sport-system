@@ -7,6 +7,7 @@ import '../auth/data/auth_session.dart';
 import '../../shared/ui/sport_visuals.dart';
 import '../booking/quick_book_screen.dart';
 import 'facility_providers.dart';
+import 'favorite_facility_provider.dart';
 import 'venue_detail_screen.dart';
 
 class ExploreScreen extends ConsumerWidget {

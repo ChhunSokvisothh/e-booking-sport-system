@@ -130,6 +130,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         ),
         onOpenExplore: () => _goToTab(1),
         onOpenHistory: () => _goToTab(2),
+        onBookFacility: (facility) => _openQuickBook(
+          initialSportType: facility.sportType,
+          initialFacilityId: facility.id.toString(),
+        ),
       ),
       ExploreScreen(onOpenDashboard: () => _goToTab(0)),
       const BookingScreen(),
@@ -179,7 +183,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         onDestinationSelected: _onDestinationSelected,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explore'),
+          NavigationDestination(icon: Icon(Icons.favorite_border_rounded), label: 'Saved'),
           NavigationDestination(icon: Icon(Icons.bookmark_outline), label: 'Bookings'),
           NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],

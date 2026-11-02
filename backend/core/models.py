@@ -338,3 +338,31 @@ class Coupon(models.Model):
 
     def __str__(self):
         return f'{self.code} ({self.discount_percent}% )'
+
+
+class FavoriteFacility(models.Model):
+    """A user's saved venue. Favorites are tied to the authenticated account."""
+
+    user = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='favorite_facilities',
+    )
+    facility = models.ForeignKey(
+        Facility,
+        on_delete=models.CASCADE,
+        related_name='saved_by_users',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'facility'],
+                name='unique_user_favorite_facility',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} saved {self.facility_id}'

@@ -8,6 +8,7 @@ import '../../shared/ui/sport_visuals.dart';
 import 'booking_providers.dart';
 import '../facility/favorite_facility_provider.dart';
 import '../facility/facility_providers.dart';
+import '../facility/venue_detail_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({
@@ -15,11 +16,13 @@ class DashboardScreen extends ConsumerStatefulWidget {
     required this.onOpenQuickBook,
     required this.onOpenExplore,
     required this.onOpenHistory,
+    required this.onBookFacility,
   });
 
   final ValueChanged<List<LiveSlotAvailability>?> onOpenQuickBook;
   final VoidCallback onOpenExplore;
   final VoidCallback onOpenHistory;
+  final ValueChanged<Facility> onBookFacility;
 
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
@@ -63,7 +66,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final query = {
       'featured': 'true',
-      'page_size': '24',
+      'page_size': '100',
       if (_activeSport != 'all') 'sport_type': _activeSport,
       if (_searchText.isNotEmpty) 'q': _searchText,
     };
@@ -295,7 +298,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Featured Venues',
+                  'Top Rated Venues',
                   style: TextStyle(fontSize: compact ? 28 : 32, fontWeight: FontWeight.w900, height: 1),
                 ),
                 Align(
@@ -303,7 +306,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   child: TextButton(
                     onPressed: () => widget.onOpenQuickBook(null),
                     child: const Text(
-                      'See All',
+                      'Quick Book',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF)),
                     ),
                   ),
@@ -314,14 +317,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Row(
               children: [
                 Text(
-                  'Featured Venues',
+                  'Top Rated Venues',
                   style: TextStyle(fontSize: compact ? 28 : 36, fontWeight: FontWeight.w900, height: 1),
                 ),
                 const Spacer(),
                 TextButton(
                   onPressed: () => widget.onOpenQuickBook(null),
                   child: Text(
-                    'See All',
+                    'Quick Book',
                     style: TextStyle(fontSize: compact ? 15 : 18, fontWeight: FontWeight.w700, color: const Color(0xFF9CA3AF)),
                   ),
                 ),
@@ -358,16 +361,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: _VenueCard(
                         venue: venue,
                         isFavorite: favoriteIds.contains(venue.facility.id),
-                        onToggleFavorite: () {
-                          ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                        onToggleFavorite: () async {
+                          try {
+                            await ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(error.toString().replaceFirst('Exception: ', '')),
+                              ),
+                            );
+                          }
                         },
-                        onTap: (selected) {
-                          final rows = (liveSlotsAsync.asData?.value ?? const <LiveSlotAvailability>[])
-                              .where((slot) => slot.facilityId == selected.facility.id.toString())
-                              .toList()
-                            ..sort((a, b) => a.startAt.compareTo(b.startAt));
-                          widget.onOpenQuickBook(rows.isEmpty ? null : rows);
-                        },
+                        onTap: (selected) => _openVenueDetails(
+                          context,
+                          selected.facility,
+                          selected.openHours,
+                          selected.rating,
+                        ),
                       ),
                     );
                   },
@@ -390,7 +401,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const Divider(height: 1),
           const SizedBox(height: 16),
           const Text(
-            'Explore',
+            'All Venues',
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 12),
@@ -410,13 +421,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _CompactVenueCard(
                           venue: venue,
-                          onTap: (selected) {
-                            final rows = (liveSlotsAsync.asData?.value ?? const <LiveSlotAvailability>[])
-                                .where((slot) => slot.facilityId == selected.facility.id.toString())
-                                .toList()
-                              ..sort((a, b) => a.startAt.compareTo(b.startAt));
-                            widget.onOpenQuickBook(rows.isEmpty ? null : rows);
+                          isFavorite: favoriteIds.contains(venue.facility.id),
+                          onToggleFavorite: () async {
+                            try {
+                              await ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                            } catch (error) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+                              );
+                            }
                           },
+                          onTap: (selected) => _openVenueDetails(
+                            context,
+                            selected.facility,
+                            selected.openHours,
+                            selected.rating,
+                          ),
                         ),
                       ),
                     )
@@ -436,6 +457,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openVenueDetails(
+    BuildContext context,
+    Facility facility,
+    String openHours,
+    double rating,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VenueDetailScreen(
+          facility: facility,
+          openHours: openHours,
+          rating: rating,
+          onBook: () {
+            Navigator.of(context).pop();
+            widget.onBookFacility(facility);
+          },
+        ),
       ),
     );
   }
@@ -847,10 +889,14 @@ class _VenueCard extends StatelessWidget {
 class _CompactVenueCard extends StatelessWidget {
   const _CompactVenueCard({
     required this.venue,
+    required this.isFavorite,
+    required this.onToggleFavorite,
     required this.onTap,
   });
 
   final _VenueView venue;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
   final ValueChanged<_VenueView> onTap;
 
   @override
@@ -920,7 +966,15 @@ class _CompactVenueCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              IconButton(
+                tooltip: isFavorite ? 'Remove saved venue' : 'Save venue',
+                onPressed: onToggleFavorite,
+                icon: Icon(
+                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: isFavorite ? const Color(0xFFE11D48) : const Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(

@@ -38,7 +38,7 @@ final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
 final facilityListProvider = FutureProvider<List<Facility>>((ref) async {
   final client = ref.watch(apiClientProvider);
-  final list = await client.getList('/api/facilities/', {'page_size': '40'});
+  final list = await client.getList('/api/facilities/', {'page_size': '100'});
   return list.map((e) => Facility.fromJson(e as Map<String, dynamic>)).toList();
 });
 

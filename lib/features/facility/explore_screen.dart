@@ -183,7 +183,7 @@ class ExploreScreen extends ConsumerWidget {
                                       Text(facility.rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w800)),
                                       const Spacer(),
                                       Text(
-                                        '$${facility.basePricePerHour.toStringAsFixed(0)}/hr',
+                                        '\${facility.basePricePerHour.toStringAsFixed(0)}/hr',
                                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                                       ),
                                     ],

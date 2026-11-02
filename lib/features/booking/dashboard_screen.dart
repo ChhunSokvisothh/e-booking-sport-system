@@ -361,8 +361,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: _VenueCard(
                         venue: venue,
                         isFavorite: favoriteIds.contains(venue.facility.id),
-                        onToggleFavorite: () {
-                          ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                        onToggleFavorite: () async {
+                          try {
+                            await ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(error.toString().replaceFirst('Exception: ', '')),
+                              ),
+                            );
+                          }
                         },
                         onTap: (selected) => _openVenueDetails(
                           context,

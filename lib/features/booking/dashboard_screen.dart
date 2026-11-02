@@ -306,7 +306,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   child: TextButton(
                     onPressed: () => widget.onOpenQuickBook(null),
                     child: const Text(
-                      'See All',
+                      'Quick Book',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF)),
                     ),
                   ),
@@ -324,7 +324,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 TextButton(
                   onPressed: () => widget.onOpenQuickBook(null),
                   child: Text(
-                    'See All',
+                    'Quick Book',
                     style: TextStyle(fontSize: compact ? 15 : 18, fontWeight: FontWeight.w700, color: const Color(0xFF9CA3AF)),
                   ),
                 ),
@@ -462,7 +462,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           facility: facility,
           openHours: openHours,
           rating: rating,
-          onBook: () => widget.onBookFacility(facility),
+          onBook: () {
+            Navigator.of(context).pop();
+            widget.onBookFacility(facility);
+          },
         ),
       ),
     );

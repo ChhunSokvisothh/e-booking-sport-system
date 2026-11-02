@@ -10,7 +10,7 @@ class AppConfig {
     }
 
     if (kIsWeb) {
-      return 'http://localhost:8000';
+      return 'https://e-booking-sport-system.onrender.com';
     }
 
     switch (defaultTargetPlatform) {

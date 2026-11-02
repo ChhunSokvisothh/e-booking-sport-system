@@ -13,6 +13,15 @@ class Facility {
     required this.imageUrl,
     required this.isActive,
     required this.archivedAt,
+    required this.galleryImageUrls,
+    required this.amenities,
+    required this.openingHours,
+    required this.contactPhone,
+    required this.websiteUrl,
+    required this.surfaceType,
+    required this.cancellationPolicy,
+    required this.courtCount,
+
   });
 
   final int id;
@@ -28,6 +37,15 @@ class Facility {
   final String? imageUrl;
   final bool isActive;
   final DateTime? archivedAt;
+  final List<String> galleryImageUrls;
+  final List<String> amenities;
+  final String openingHours;
+  final String contactPhone;
+  final String websiteUrl;
+  final String surfaceType;
+  final String cancellationPolicy;
+  final int courtCount;
+
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
     if (value is num) {
@@ -57,6 +75,25 @@ class Facility {
       archivedAt: (json['archived_at'] as String?) == null
           ? null
           : DateTime.tryParse(json['archived_at'] as String)?.toLocal(),
+      
+      galleryImageUrls:
+          (json['gallery_image_urls'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[],
+      amenities:
+          (json['amenities'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[],
+      openingHours: json['opening_hours'] as String? ?? '',
+      contactPhone: json['contact_phone'] as String? ?? '',
+      websiteUrl: json['website_url'] as String? ?? '',
+      surfaceType: json['surface_type'] as String? ?? '',
+      cancellationPolicy:
+          json['cancellation_policy'] as String? ?? '',
+      courtCount: (json['court_count'] as num?)?.toInt() ?? 1,
+
     );
   }
 }
@@ -83,6 +120,7 @@ class TimeSlotItem {
   final bool isOpen;
   final double occupancyRate;
   final bool hasSpace;
+  
 
   factory TimeSlotItem.fromJson(Map<String, dynamic> json) {
     return TimeSlotItem(

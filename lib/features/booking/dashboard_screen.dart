@@ -421,12 +421,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _CompactVenueCard(
                           venue: venue,
+                          isFavorite: favoriteIds.contains(venue.facility.id),
+                          onToggleFavorite: () async {
+                            try {
+                              await ref.read(favoriteFacilityIdsProvider.notifier).toggle(venue.facility.id);
+                            } catch (error) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+                              );
+                            }
+                          },
                           onTap: (selected) => _openVenueDetails(
-                          context,
-                          selected.facility,
-                          selected.openHours,
-                          selected.rating,
-                        ),
+                            context,
+                            selected.facility,
+                            selected.openHours,
+                            selected.rating,
+                          ),
                         ),
                       ),
                     )
@@ -878,10 +889,14 @@ class _VenueCard extends StatelessWidget {
 class _CompactVenueCard extends StatelessWidget {
   const _CompactVenueCard({
     required this.venue,
+    required this.isFavorite,
+    required this.onToggleFavorite,
     required this.onTap,
   });
 
   final _VenueView venue;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
   final ValueChanged<_VenueView> onTap;
 
   @override
@@ -951,7 +966,15 @@ class _CompactVenueCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
+              IconButton(
+                tooltip: isFavorite ? 'Remove saved venue' : 'Save venue',
+                onPressed: onToggleFavorite,
+                icon: Icon(
+                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: isFavorite ? const Color(0xFFE11D48) : const Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(

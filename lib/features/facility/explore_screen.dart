@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/ui/app_transitions.dart';
 import '../../shared/models/models.dart';
+import '../auth/data/auth_session.dart';
 import '../../shared/ui/sport_visuals.dart';
 import '../booking/quick_book_screen.dart';
 import 'facility_providers.dart';
 import 'venue_detail_screen.dart';
 
-class ExploreScreen extends ConsumerStatefulWidget {
+class ExploreScreen extends ConsumerWidget {
   const ExploreScreen({
     super.key,
     required this.onOpenDashboard,
@@ -17,354 +18,215 @@ class ExploreScreen extends ConsumerStatefulWidget {
   final VoidCallback onOpenDashboard;
 
   @override
-  ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
-}
-
-class _ExploreScreenState extends ConsumerState<ExploreScreen> {
-  static const int _pageSize = 12;
-
-  final TextEditingController _searchController = TextEditingController();
-  String _searchText = '';
-  String? _sportType;
-  bool _indoorOnly = false;
-  int _page = 1;
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Map<String, String> _query() {
-    return {
-      'featured': 'true',
-      'page': _page.toString(),
-      'page_size': '$_pageSize',
-      if (_searchText.isNotEmpty) 'q': _searchText,
-      ...?_sportType == null ? null : {'sport_type': _sportType!},
-      if (_indoorOnly) 'is_indoor': 'true',
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final largeText = textScale > 1.2;
-    final compact = width < 430;
-    final tablet = width >= 768;
-    final horizontalPadding = width >= 1100 ? (width - 1000) / 2 : 16.0;
-
-    final query = _query();
-    final queryKey = serializeQuery(query);
-    final facilitiesAsync = ref.watch(facilityListByQueryWithDiagnosticsProvider(queryKey));
-    const allLiveSlotsQuery = '';
-    final liveSlotsAsync = ref.watch(liveSlotAvailabilityProvider(allLiveSlotsQuery));
-    final bookedCountByFacility = <String, int>{};
-    for (final row in (liveSlotsAsync.asData?.value ?? const <LiveSlotAvailability>[])) {
-      if (!row.bookedByMe) {
-        continue;
-      }
-      bookedCountByFacility[row.facilityId] = (bookedCountByFacility[row.facilityId] ?? 0) + 1;
-    }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(authSessionProvider);
+    final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
+    final facilitiesAsync = ref.watch(facilityListProvider);
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 14, horizontalPadding, 100),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 110),
       children: [
-        Text(
-          'Explore Venues',
-          style: TextStyle(
-            fontSize: largeText ? (compact ? 24 : 30) : (tablet ? 36 : (compact ? 28 : 34)),
-            fontWeight: FontWeight.w900,
-            height: 1,
-          ),
+        const Text(
+          'Saved Venues',
+          style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 6),
         Text(
-          'Server-ranked by relevance and rating.',
+          'Your shortlist, ready whenever you want to play.',
           style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
         ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  final normalized = value.toLowerCase();
-                  if (value != normalized) {
-                    _searchController.value = TextEditingValue(
-                      text: normalized,
-                      selection: TextSelection.collapsed(offset: normalized.length),
-                    );
-                  }
-                  setState(() {
-                    _searchText = normalized.trim();
-                    _page = 1;
-                  });
-                },
-                textCapitalization: TextCapitalization.none,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(
-                  hintText: 'Search name or location',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
+        const SizedBox(height: 18),
+        if (session == null)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_outline_rounded, size: 30),
+                SizedBox(height: 10),
+                Text('Sign in to sync saved venues', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                SizedBox(height: 6),
+                Text('Saved venues are linked to your account so they can follow you across devices. Open Profile to sign in.'),
+              ],
+            ),
+          )
+        else
+          facilitiesAsync.when(
+            loading: () => const _ExploreSkeletonList(),
+            error: (error, stack) => Column(
+              children: [
+                const Text('Could not load your saved venues.'),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(facilityListProvider),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(width: 10),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(buildSlideFadeRoute(QuickBookScreen(onOpenDashboard: widget.onOpenDashboard)));
-              },
-              icon: const Icon(Icons.flash_on),
-              label: const Text('Quick'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 40,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: SportVisuals.all.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return _FilterChip(
-                  label: 'All',
-                  selected: _sportType == null,
-                  onTap: () {
-                    setState(() {
-                      _sportType = null;
-                      _page = 1;
-                    });
-                  },
+            data: (facilities) {
+              final saved = facilities.where((facility) => favoriteIds.contains(facility.id)).toList();
+              if (saved.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.favorite_border_rounded, size: 42, color: Color(0xFF6B7280)),
+                      SizedBox(height: 10),
+                      Text('No saved venues yet', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                      SizedBox(height: 6),
+                      Text(
+                        'Open Home, choose a venue you like, and tap the heart to add it here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
+                      ),
+                    ],
+                  ),
                 );
               }
 
-              final visual = SportVisuals.all[index - 1];
-              final selected = _sportType == visual.sportType;
-              return _FilterChip(
-                label: visual.label,
-                selected: selected,
-                onTap: () {
-                  setState(() {
-                    _sportType = visual.sportType;
-                    _page = 1;
-                  });
-                },
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Checkbox(
-              value: _indoorOnly,
-              onChanged: (value) {
-                setState(() {
-                  _indoorOnly = value ?? false;
-                  _page = 1;
-                });
-              },
-            ),
-            const Text('Indoor only', style: TextStyle(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _searchController.clear();
-                  _searchText = '';
-                  _sportType = null;
-                  _indoorOnly = false;
-                  _page = 1;
-                });
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset filters'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Discover By Sport',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: SportVisuals.all.take(5).map((visual) {
-                  return ActionChip(
-                    backgroundColor: Colors.white,
-                    label: Text(visual.label),
-                    avatar: Icon(visual.icon, size: 18),
-                    onPressed: () {
-                      setState(() {
-                        _sportType = visual.sportType;
-                        _page = 1;
-                      });
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        facilitiesAsync.when(
-          data: (payload) {
-            final facilities = payload.data;
-            if (facilities.isEmpty) {
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('No venues found on this page.', style: TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Try another sport filter or open Quick Booking to browse live available slots instantly.',
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(buildSlideFadeRoute(QuickBookScreen(onOpenDashboard: widget.onOpenDashboard)));
-                      },
-                      icon: const Icon(Icons.flash_on),
-                      label: const Text('Open Quick Booking'),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return Column(
-              children: [
-                ...facilities.map((facility) {
+              return Column(
+                children: saved.map((facility) {
                   final visual = SportVisuals.ofVenue(
                     sportType: facility.sportType,
                     venueId: facility.id,
                     venueName: facility.name,
                   );
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _ExploreCard(
-                      facility: facility,
-                      visual: visual,
-                      bookedSlotCount: bookedCountByFacility[facility.id.toString()] ?? 0,
-                      onTap: () {
-                        Navigator.of(context).push(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).push(
                           buildSlideFadeRoute(
                             VenueDetailScreen(
                               facility: facility,
-                              openHours: 'Contact venue for opening hours',
+                              openHours: facility.openingHours.isNotEmpty
+                                  ? facility.openingHours
+                                  : 'Contact venue for opening hours',
                               rating: facility.rating,
-                              onBook: () {
-                                Navigator.of(context).push(
-                                  buildSlideFadeRoute(
-                                    QuickBookScreen(
-                                      onOpenDashboard: widget.onOpenDashboard,
-                                      initialSportType: facility.sportType,
-                                      initialFacilityId: facility.id.toString(),
-                                    ),
+                              onBook: () => Navigator.of(context).push(
+                                buildSlideFadeRoute(
+                                  QuickBookScreen(
+                                    onOpenDashboard: onOpenDashboard,
+                                    initialSportType: facility.sportType,
+                                    initialFacilityId: facility.id.toString(),
                                   ),
-                                );
-                              },
+                                ),
+                              ),
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Stack(
+                              children: [
+                                _AssetOrNetworkImage(
+                                  assetPath: visual.assetPath,
+                                  fallbackImageUrl: visual.fallbackImageUrl,
+                                  networkImageUrl: facility.imageUrl,
+                                  height: 170,
+                                  width: double.infinity,
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: Material(
+                                    color: Colors.white,
+                                    shape: const CircleBorder(),
+                                    child: IconButton(
+                                      tooltip: 'Remove from saved venues',
+                                      onPressed: () async {
+                                        try {
+                                          await ref.read(favoriteFacilityIdsProvider.notifier).toggle(facility.id);
+                                        } catch (error) {
+                                          if (!context.mounted) return;
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+                                          );
+                                        }
+                                      },
+                                      icon: const Icon(Icons.favorite_rounded, color: Color(0xFFE11D48)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(15),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(facility.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    '${facility.locationName} • ${visual.label}',
+                                    style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 18),
+                                      const SizedBox(width: 4),
+                                      Text(facility.rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w800)),
+                                      const Spacer(),
+                                      Text(
+                                        '$${facility.basePricePerHour.toStringAsFixed(0)}/hr',
+                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => Navigator.of(context).push(
+                                        buildSlideFadeRoute(
+                                          VenueDetailScreen(
+                                            facility: facility,
+                                            openHours: facility.openingHours.isNotEmpty
+                                                ? facility.openingHours
+                                                : 'Contact venue for opening hours',
+                                            rating: facility.rating,
+                                            onBook: () => Navigator.of(context).push(
+                                              buildSlideFadeRoute(
+                                                QuickBookScreen(
+                                                  onOpenDashboard: onOpenDashboard,
+                                                  initialSportType: facility.sportType,
+                                                  initialFacilityId: facility.id.toString(),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.arrow_forward_rounded),
+                                      label: const Text('View venue'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
-                }),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _page > 1
-                            ? () {
-                                setState(() => _page -= 1);
-                              }
-                            : null,
-                        icon: const Icon(Icons.chevron_left),
-                        label: const Text('Previous'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text('Page $_page', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: facilities.length >= _pageSize
-                            ? () {
-                                setState(() => _page += 1);
-                              }
-                            : null,
-                        icon: const Icon(Icons.chevron_right),
-                        label: const Text('Next'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-          loading: () => const _ExploreSkeletonList(),
-          error: (error, stack) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 42),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Unable to load venues right now.'),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () => ref.invalidate(facilityListByQueryWithDiagnosticsProvider(queryKey)),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Try Again'),
-                  ),
-                ],
-              ),
-            ),
+                }).toList(),
+              );
+            },
           ),
-        ),
       ],
     );
   }

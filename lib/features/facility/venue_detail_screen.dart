@@ -2,12 +2,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../shared/models/models.dart';
 import '../../shared/ui/sport_visuals.dart';
+import 'favorite_facility_provider.dart';
 
-class VenueDetailScreen extends StatelessWidget {
+class VenueDetailScreen extends ConsumerWidget {
   const VenueDetailScreen({
     super.key,
     required this.facility,
@@ -27,7 +31,9 @@ class VenueDetailScreen extends StatelessWidget {
   static const Color _accent = Color(0xFF16835D);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
+    final isFavorite = favoriteIds.contains(facility.id);
     final visual = SportVisuals.ofVenue(
       sportType: facility.sportType,
       venueId: facility.id,
@@ -78,6 +84,32 @@ class VenueDetailScreen extends StatelessWidget {
             color: _ink,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: isFavorite ? 'Remove from saved venues' : 'Save venue',
+            onPressed: () async {
+              try {
+                await ref
+                    .read(favoriteFacilityIdsProvider.notifier)
+                    .toggle(facility.id);
+              } catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      error.toString().replaceFirst('Exception: ', ''),
+                    ),
+                  ),
+                );
+              }
+            },
+            icon: Icon(
+              isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: isFavorite ? const Color(0xFFE11D48) : _ink,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -247,33 +279,55 @@ class VenueDetailScreen extends StatelessWidget {
                     child: SizedBox(
                       height: 260,
                       width: double.infinity,
-                      child: GoogleMap(
-                        initialCameraPosition: CameraPosition(
-                          target: LatLng(
-                            facility.latitude,
-                            facility.longitude,
+                      child: Stack(
+                        children: [
+                          FlutterMap(
+                            options: MapOptions(
+                              initialCenter: LatLng(
+                                facility.latitude,
+                                facility.longitude,
+                              ),
+                              initialZoom: 15,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.ebookingsport.app',
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: LatLng(
+                                      facility.latitude,
+                                      facility.longitude,
+                                    ),
+                                    width: 44,
+                                    height: 44,
+                                    child: const Icon(
+                                      Icons.location_pin,
+                                      size: 42,
+                                      color: Color(0xFFE11D48),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              RichAttributionWidget(
+                                attributions: [
+                                  TextSourceAttribution(
+                                    'OpenStreetMap contributors',
+                                    onTap: () => launchUrl(
+                                      Uri.parse(
+                                        'https://www.openstreetmap.org/copyright',
+                                      ),
+                                      mode: LaunchMode.externalApplication,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          zoom: 15,
-                        ),
-                        markers: {
-                          Marker(
-                            markerId: MarkerId(
-                              'facility-${facility.id}',
-                            ),
-                            position: LatLng(
-                              facility.latitude,
-                              facility.longitude,
-                            ),
-                            infoWindow: InfoWindow(
-                              title: facility.name,
-                              snippet: facility.locationName,
-                            ),
-                          ),
-                        },
-                        myLocationButtonEnabled: false,
-                        zoomControlsEnabled: true,
-                        mapToolbarEnabled: true,
-                        compassEnabled: true,
+                        ],
                       ),
                     ),
                   )

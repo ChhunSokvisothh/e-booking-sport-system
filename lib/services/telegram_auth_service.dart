@@ -12,11 +12,6 @@ class TelegramAuthService {
   static Uri? _activeTelegramAppUri;
   static Uri? _activeTelegramWebUri;
 
-  static const String _botUsername = String.fromEnvironment(
-    'TELEGRAM_BOT_USERNAME',
-    defaultValue: 'SportsSystemBot',
-  );
-
   static void cancel() {
     _cancelled = true;
     _activeClient?.close();
@@ -54,54 +49,72 @@ class TelegramAuthService {
     final baseUrl = configuredBaseUrl.endsWith('/')
         ? configuredBaseUrl.substring(0, configuredBaseUrl.length - 1)
         : configuredBaseUrl;
+
     try {
       final startResponse = await client
-          .post(Uri.parse('$baseUrl/api/auth/telegram/start'))
+          .post(Uri.parse('$baseUrl/api/auth/telegram/start/'))
           .timeout(const Duration(seconds: 15));
       _throwIfCancelled();
       if (startResponse.statusCode < 200 || startResponse.statusCode >= 300) {
         throw Exception(_serverMessage(startResponse, 'Could not start Telegram login'));
       }
-      final startData = jsonDecode(startResponse.body) as Map<String, dynamic>;
-      final code = startData['token'] as String?;
-      if (code == null || code.isEmpty) {
-        throw Exception('Telegram login code was missing.');
-      }
-      onCodeCreated?.call(code);
 
-      final username = _botUsername.startsWith('@') ? _botUsername.substring(1) : _botUsername;
+      final startData = jsonDecode(startResponse.body) as Map<String, dynamic>;
+      final telegramUrl = startData['telegram_url'] as String?;
+      if (telegramUrl == null || telegramUrl.isEmpty) {
+        throw Exception('Telegram login link was missing from the server response.');
+      }
+
+      final webUri = Uri.parse(telegramUrl);
+      final code = webUri.queryParameters['start'];
+      final username = webUri.pathSegments.isNotEmpty ? webUri.pathSegments.first : null;
+      if (code == null || code.isEmpty || username == null || username.isEmpty) {
+        throw Exception('The Telegram login link returned by the server is invalid.');
+      }
+
+      onCodeCreated?.call(code);
       _activeTelegramAppUri = Uri(
         scheme: 'tg',
         host: 'resolve',
         queryParameters: {'domain': username, 'start': code},
       );
-      _activeTelegramWebUri = Uri.https('t.me', '/$username', {'start': code});
+      _activeTelegramWebUri = webUri;
+
       if (!await openTelegram()) {
-        throw Exception('Could not open Telegram.');
+        throw Exception('Could not open Telegram. Please check that Telegram is installed or open the bot link manually.');
       }
 
       final stopwatch = Stopwatch()..start();
       const timeout = Duration(minutes: 4, seconds: 50);
       while (stopwatch.elapsed < timeout) {
         final response = await client
-            .post(Uri.parse('$baseUrl/api/auth/telegram/status'), body: {'token': code})
+            .post(
+              Uri.parse('$baseUrl/api/auth/telegram/status/'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'code': code}),
+            )
             .timeout(timeout - stopwatch.elapsed);
+
+        _throwIfCancelled();
         if (response.statusCode < 200 || response.statusCode >= 300) {
           throw Exception(_serverMessage(response, 'Could not check Telegram login status'));
         }
+
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        _throwIfCancelled();
-        if (data['status'] == 'done') {
+        if (data['status'] == 'authenticated') {
           return data;
         }
         if (data['status'] == 'expired') {
           throw Exception('This Telegram sign-in code expired. Start again and complete Telegram within five minutes.');
         }
         if (data['status'] == 'error' || data['status'] == 'failed') {
-          throw Exception('The sign-in code was not found by the backend. Check the Telegram webhook, then try again.');
+          throw Exception('The sign-in code was rejected. Check the Telegram webhook, then try again.');
         }
+
         await Future<void>.delayed(const Duration(seconds: 2));
+        _throwIfCancelled();
       }
+
       throw TimeoutException('Telegram did not complete sign-in in time. Check the bot webhook URL and secret, then try again.');
     } catch (_) {
       if (_cancelled) {
@@ -130,9 +143,12 @@ class TelegramAuthService {
       if (body is Map<String, dynamic> && body['error'] is String) {
         return body['error'] as String;
       }
+      if (body is Map<String, dynamic> && body['detail'] is String) {
+        return body['detail'] as String;
+      }
     } on FormatException {
       // Proxies and server errors may return HTML instead of JSON.
     }
-    return '$fallback (HTTP ${response.statusCode}).';
+    return fallback + ' (HTTP ' + response.statusCode.toString() + ').';
   }
 }

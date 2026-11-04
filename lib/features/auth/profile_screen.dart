@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
+import '../facility/facility_providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 
@@ -26,6 +29,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final TextEditingController _cityController = TextEditingController(text: 'Phnom Penh');
   String _favoriteSport = 'Football';
   String? _profileImageBase64;
+  bool _telegramLoading = true;
+  bool _telegramBusy = false;
+  bool _telegramLinked = false;
+  String? _telegramUsername;
+  Timer? _telegramPollTimer;
 
   static const _favoriteSports = ['Football', 'Billiard', 'Pickleball', 'Volleyball', 'Basketball', 'Futsal', 'Tennis', 'Badminton'];
 
@@ -47,10 +55,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _loadPrefs();
+    _loadTelegramStatus();
   }
 
   @override
   void dispose() {
+    _telegramPollTimer?.cancel();
     _displayNameController.dispose();
     _cityController.dispose();
     super.dispose();
@@ -109,6 +119,69 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _loadTelegramStatus() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null) {
+      if (mounted) setState(() => _telegramLoading = false);
+      return;
+    }
+    try {
+      final result = await ref.read(apiClientProvider).getMap(
+        '/api/auth/telegram/link/status/',
+        token: session.token,
+      );
+      if (!mounted) return;
+      setState(() {
+        _telegramLinked = result['linked'] == true;
+        _telegramUsername = result['telegram_username'] as String?;
+        _telegramLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _telegramLoading = false);
+    }
+  }
+
+  Future<void> _startTelegramLink() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null || _telegramBusy) return;
+    setState(() => _telegramBusy = true);
+    try {
+      final result = await ref.read(apiClientProvider).postJson(
+        '/api/auth/telegram/link/start/', const {}, token: session.token,
+      );
+      final telegramUrl = result['telegram_url'] as String?;
+      if (telegramUrl == null || telegramUrl.isEmpty) {
+        throw Exception('The server did not return a Telegram link.');
+      }
+      final opened = await launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication);
+      if (!opened) throw Exception('Could not open Telegram.');
+      _telegramPollTimer?.cancel();
+      final deadline = DateTime.now().add(const Duration(minutes: 5));
+      _telegramPollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        if (!mounted || DateTime.now().isAfter(deadline)) {
+          timer.cancel();
+          if (mounted) setState(() => _telegramBusy = false);
+          return;
+        }
+        await _loadTelegramStatus();
+        if (_telegramLinked) {
+          timer.cancel();
+          if (mounted) {
+            setState(() => _telegramBusy = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Telegram account linked successfully.')),
+            );
+          }
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _telegramBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -428,6 +501,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _PillInfo(label: 'Notifications', value: _pushEnabled ? 'Enabled' : 'Disabled'),
                     _PillInfo(label: 'Offers', value: _offersEnabled ? 'Enabled' : 'Disabled'),
                   ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.telegram, color: Color(0xFF229ED9)),
+                  SizedBox(width: 8),
+                  Text('Telegram Account', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ]),
+                const SizedBox(height: 8),
+                Text(
+                  isGuest
+                      ? 'Sign in to link your Telegram account for faster login.'
+                      : _telegramLoading
+                          ? 'Checking Telegram connection...'
+                          : _telegramLinked
+                              ? 'Connected' + ((_telegramUsername == null || _telegramUsername!.isEmpty) ? '' : ' as @' + _telegramUsername!)
+                              : 'Connect Telegram to use it as another way to sign in.',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: isGuest || _telegramLoading || _telegramBusy || _telegramLinked ? null : _startTelegramLink,
+                    icon: _telegramBusy
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(_telegramLinked ? Icons.check_circle_outline : Icons.link),
+                    label: Text(_telegramLinked ? 'Telegram Linked' : _telegramBusy ? 'Waiting for Telegram confirmation...' : 'Link Telegram Account'),
+                  ),
                 ),
               ],
             ),

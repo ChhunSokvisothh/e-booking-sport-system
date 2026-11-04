@@ -5,8 +5,6 @@ import logging
 import secrets
 from datetime import timedelta
 
-import requests
-
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
@@ -34,6 +32,9 @@ User = get_user_model()
 TOKEN_LIFETIME = timedelta(minutes=5)
 
 
+TOKEN_LIFETIME = timedelta(minutes=15)
+
+
 def _hash_code(code):
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
@@ -42,29 +43,18 @@ def _generate_code():
     return secrets.token_urlsafe(32)
 
 
-def _telegram_send_message(chat_id, message):
-    if not settings.TELEGRAM_BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is not configured.")
-        return
+def _telegram_webhook_message(chat_id, message):
+    """
+    Ask Telegram to send a message through the webhook response.
 
-    url = (
-        f"https://api.telegram.org/bot"
-        f"{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
-    )
-
-    try:
-        response = requests.post(
-            url,
-            json={
-                "chat_id": chat_id,
-                "text": message,
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        logger.exception("Failed to send Telegram message.")
-
+    This avoids making a second outgoing HTTP request from Render
+    while processing an incoming Telegram update.
+    """
+    return JsonResponse({
+        "method": "sendMessage",
+        "chat_id": chat_id,
+        "text": message,
+    })
 
 def _auth_payload(user):
     token, _ = Token.objects.get_or_create(user=user)
@@ -111,7 +101,7 @@ def telegram_start(request):
             f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}"
             f"?start={code}"
         ),
-        "expires_in": 300,
+        "expires_in": 900,
     })
 
 
@@ -220,9 +210,8 @@ def telegram_link_start(request):
             f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}"
             f"?start={code}"
         ),
-        "expires_in": 300,
+        "expires_in": 900,
     })
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -355,7 +344,7 @@ def telegram_webhook(request):
             return JsonResponse({"ok": True})
 
         if not text.startswith("/start"):
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 "Welcome to E-Booking Sport! "
                 "Use the login or account-linking option in the app "
@@ -366,7 +355,7 @@ def telegram_webhook(request):
         parts = text.split(maxsplit=1)
 
         if len(parts) < 2:
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 "Open Telegram from the E-Booking Sport app to continue.",
             )
@@ -407,7 +396,7 @@ def telegram_webhook(request):
                 ),
             }
 
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 messages.get(result, "Unable to link your account."),
             )
@@ -452,14 +441,14 @@ def telegram_webhook(request):
                     login_result = "done"
 
         if login_result == "done":
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 "Login confirmed! Return to E-Booking Sport to finish "
                 "signing in.",
             )
 
         elif login_result == "not_linked":
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 "This Telegram account is not linked to an E-Booking Sport "
                 "account yet. Please sign in using your email and password, "
@@ -467,7 +456,7 @@ def telegram_webhook(request):
             )
 
         else:
-            _telegram_send_message(
+            _telegram_webhook_message(
                 chat_id,
                 "This login code is invalid, expired, or already used. "
                 "Please try again from the app.",
@@ -477,4 +466,7 @@ def telegram_webhook(request):
 
     except Exception:
         logger.exception("Telegram webhook processing failed.")
-        return JsonResponse({"ok": True})
+        return JsonResponse(
+            {"ok": False, "error": "Webhook processing failed"},
+            status=500,
+        )

@@ -1,20 +1,38 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 import dj_database_url
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
+
+# ==============================================================================
+# CORE SETTINGS
+# ==============================================================================
+
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret')
 
-# Strict boolean evaluation for DEBUG
 DEBUG = os.getenv('DEBUG', 'False').lower() in ['1', 'true', 'yes']
 
-# Parse allowed hosts string into a list
-ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
-if 'ebooking-app.onrender.com' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('ebooking-app.onrender.com')
+BACKEND_URL = 'https://e-booking-sport-system.onrender.com'
+BACKEND_HOST = 'e-booking-sport-system.onrender.com'
+TELEGRAM_WEBHOOK_URL = (
+    f'{BACKEND_URL}/api/auth/telegram/webhook/'
+)
+
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    BACKEND_HOST,
+]
+
+
+# ==============================================================================
+# INSTALLED APPS
+# ==============================================================================
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -23,20 +41,25 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third-party packages
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
-    
+
     # Local apps
     'core',
 ]
 
+
+# ==============================================================================
+# MIDDLEWARE
+# ==============================================================================
+
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # Must be at the top
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files on Render
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -44,6 +67,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 
 ROOT_URLCONF = 'config.urls'
 
@@ -65,10 +89,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
+
 # ==============================================================================
 # DATABASE CONFIGURATION
 # ==============================================================================
-# Bypassing Django ORM to use direct Supabase API / SDK access in views
+
 DATABASES = {
     'default': dj_database_url.parse(
         os.environ['DATABASE_URL'],
@@ -76,60 +101,90 @@ DATABASES = {
         ssl_require=True,
     )
 }
+
 DATABASES['default']['CONN_HEALTH_CHECKS'] = True
 
-AUTH_PASSWORD_VALIDATORS = []
+
+# ==============================================================================
+# INTERNATIONALIZATION
+# ==============================================================================
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
+
 # ==============================================================================
-# STATIC FILES (Served via WhiteNoise on Render)
+# STATIC FILES
 # ==============================================================================
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+STATICFILES_STORAGE = (
+    'whitenoise.storage.CompressedManifestStaticFilesStorage'
+)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+
 # ==============================================================================
-# CORS & SECURITY SETTINGS
+# CORS & SECURITY
 # ==============================================================================
-CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() in ['1', 'true', 'yes']
+
+CORS_ALLOW_ALL_ORIGINS = (
+    os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower()
+    in ['1', 'true', 'yes']
+)
 
 if not CORS_ALLOW_ALL_ORIGINS:
     CORS_ALLOWED_ORIGINS = [
-        origin.strip() 
-        for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') 
+        origin.strip()
+        for origin in os.getenv(
+            'CORS_ALLOWED_ORIGINS',
+            'http://localhost:3000,http://127.0.0.1:3000'
+        ).split(',')
         if origin.strip()
     ]
-    if 'https://ebooking-app-1.onrender.com' not in CORS_ALLOWED_ORIGINS:
-        CORS_ALLOWED_ORIGINS.append('https://ebooking-app-1.onrender.com')
-    
-    if 'https://e-booking-sports.netlify.app' not in CORS_ALLOWED_ORIGINS:
-        CORS_ALLOWED_ORIGINS.append('https://e-booking-sports.netlify.app')
-    # Flutter's web development server chooses an available port, so allow
-    # local development origins without opening CORS to external sites.
+
+    FRONTEND_URL = 'https://e-booking-sports.netlify.app'
+
+    if FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+
     CORS_ALLOWED_ORIGIN_REGEXES = [
         r'^https?://(localhost|127\.0\.0\.1)(:\d+)?$',
     ]
 
-# CSRF Trusted Origins for Render host
+
 CSRF_TRUSTED_ORIGINS = [
-    f"https://{host}" for host in ALLOWED_HOSTS if host not in ['127.0.0.1', 'localhost']
+    BACKEND_URL,
+    'https://e-booking-sports.netlify.app',
 ]
 
-# REST FRAMEWORK CONFIGURATION
+
+# ==============================================================================
+# DJANGO REST FRAMEWORK
+# ==============================================================================
+
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': (
+        'rest_framework.pagination.PageNumberPagination'
+    ),
     'PAGE_SIZE': 12,
 }
+
+
+# ==============================================================================
+# CACHE
+# ==============================================================================
 
 CACHES = {
     'default': {
@@ -138,17 +193,46 @@ CACHES = {
     }
 }
 
+
 # ==============================================================================
-# SUPABASE & THIRD-PARTY CONFIGURATION
+# SUPABASE CONFIGURATION
 # ==============================================================================
+
 SUPABASE_URL = os.getenv('SUPABASE_URL', '')
 SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
-SUPABASE_BOOKING_TABLE = os.getenv('SUPABASE_BOOKING_TABLE', 'core_booking')
-SUPABASE_TIMESLOT_TABLE = os.getenv('SUPABASE_TIMESLOT_TABLE', 'core_timeslot')
+
+SUPABASE_BOOKING_TABLE = os.getenv(
+    'SUPABASE_BOOKING_TABLE',
+    'core_booking'
+)
+
+SUPABASE_TIMESLOT_TABLE = os.getenv(
+    'SUPABASE_TIMESLOT_TABLE',
+    'core_timeslot'
+)
+
+
+# ==============================================================================
+# AI / THIRD-PARTY SERVICES
+# ==============================================================================
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 HF_API_KEY = os.getenv('HF_API_KEY', '')
+
+
+# ==============================================================================
+# TELEGRAM CONFIGURATION
+# ==============================================================================
+
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '')
-TELEGRAM_WEBHOOK_SECRET = os.getenv('TELEGRAM_WEBHOOK_SECRET', '')
-TELEGRAM_WEBHOOK_URL = os.getenv('TELEGRAM_WEBHOOK_URL', '')
+
+TELEGRAM_WEBHOOK_SECRET = os.getenv(
+    'TELEGRAM_WEBHOOK_SECRET',
+    ''
+)
+
+# Always use the single canonical backend URL.
+TELEGRAM_WEBHOOK_URL = (
+    f'{BACKEND_URL}/api/auth/telegram/webhook/'
+)

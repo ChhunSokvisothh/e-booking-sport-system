@@ -10,7 +10,7 @@ class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
-  static const Duration _requestTimeout = Duration(seconds: 15);
+  static const Duration _requestTimeout = Duration(seconds: 60);
 
   Uri _uri(String path, [Map<String, String>? query]) {
     return Uri.parse('${AppConfig.backendBaseUrl}$path').replace(queryParameters: query);

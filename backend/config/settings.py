@@ -107,6 +107,9 @@ if not CORS_ALLOW_ALL_ORIGINS:
     ]
     if 'https://ebooking-app-1.onrender.com' not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append('https://ebooking-app-1.onrender.com')
+    
+    if 'https://e-booking-sports.netlify.app' not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append('https://e-booking-sports.netlify.app')
     # Flutter's web development server chooses an available port, so allow
     # local development origins without opening CORS to external sites.
     CORS_ALLOWED_ORIGIN_REGEXES = [

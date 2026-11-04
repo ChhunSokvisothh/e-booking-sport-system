@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -27,92 +28,196 @@ class TelegramAuthService {
 
   static Future<bool> openTelegram() async {
     final appUri = _activeTelegramAppUri;
+
     if (appUri != null) {
       try {
-        if (await launchUrl(appUri, mode: LaunchMode.externalApplication)) {
+        if (await launchUrl(
+          appUri,
+          mode: LaunchMode.externalApplication,
+        )) {
           return true;
         }
       } catch (_) {
-        // Fall back to Telegram's HTTPS link if tg:// is unavailable.
+        // Fall back to Telegram HTTPS URL.
       }
     }
 
     final webUri = _activeTelegramWebUri;
     if (webUri == null) return false;
+
     try {
-      return await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return await launchUrl(
+        webUri,
+        mode: LaunchMode.externalApplication,
+      );
     } catch (_) {
       return false;
     }
   }
 
-  static Future<Map<String, dynamic>> login({void Function(String code)? onCodeCreated}) async {
+  static Future<Map<String, dynamic>> login({
+    void Function(String code)? onCodeCreated,
+  }) async {
     _cancelled = false;
+
     final client = http.Client();
     _activeClient = client;
+
     final configuredBaseUrl = AppConfig.backendBaseUrl;
     final baseUrl = configuredBaseUrl.endsWith('/')
         ? configuredBaseUrl.substring(0, configuredBaseUrl.length - 1)
         : configuredBaseUrl;
+
     try {
+      // --------------------------------------------------
+      // 1. Start Telegram login
+      // --------------------------------------------------
+
       final startResponse = await client
-          .post(Uri.parse('$baseUrl/api/auth/telegram/start/'))
+          .post(
+            Uri.parse('$baseUrl/api/auth/telegram/start/'),
+          )
           .timeout(const Duration(seconds: 15));
+
       _throwIfCancelled();
-      if (startResponse.statusCode < 200 || startResponse.statusCode >= 300) {
-        throw Exception(_serverMessage(startResponse, 'Could not start Telegram login'));
+
+      if (startResponse.statusCode < 200 ||
+          startResponse.statusCode >= 300) {
+        throw Exception(
+          _serverMessage(
+            startResponse,
+            'Could not start Telegram login',
+          ),
+        );
       }
-      final startData = jsonDecode(startResponse.body) as Map<String, dynamic>;
-      final code = startData['token'] as String?;
+
+      final startData =
+          jsonDecode(startResponse.body) as Map<String, dynamic>;
+
+      // Backend returns telegram_url
+      final telegramUrl = startData['telegram_url'] as String?;
+
+      if (telegramUrl == null || telegramUrl.isEmpty) {
+        throw Exception('Telegram login URL was missing from the server.');
+      }
+
+      // Extract the temporary login code from ?start=...
+      final telegramUri = Uri.parse(telegramUrl);
+      final code = telegramUri.queryParameters['start'];
+
       if (code == null || code.isEmpty) {
-        throw Exception('Telegram login code was missing.');
+        throw Exception('Telegram login code was missing from the URL.');
       }
+
       onCodeCreated?.call(code);
 
-      final username = _botUsername.startsWith('@') ? _botUsername.substring(1) : _botUsername;
+      // --------------------------------------------------
+      // 2. Prepare Telegram app and browser URLs
+      // --------------------------------------------------
+
+      final username = _botUsername.startsWith('@')
+          ? _botUsername.substring(1)
+          : _botUsername;
+
       _activeTelegramAppUri = Uri(
         scheme: 'tg',
         host: 'resolve',
-        queryParameters: {'domain': username, 'start': code},
+        queryParameters: {
+          'domain': username,
+          'start': code,
+        },
       );
-      _activeTelegramWebUri = Uri.https('t.me', '/$username', {'start': code});
+
+      // Use the exact URL returned by Django.
+      _activeTelegramWebUri = telegramUri;
+
       if (!await openTelegram()) {
         throw Exception('Could not open Telegram.');
       }
 
+      _throwIfCancelled();
+
+      // --------------------------------------------------
+      // 3. Poll backend for Telegram confirmation
+      // --------------------------------------------------
+
       final stopwatch = Stopwatch()..start();
+
       const timeout = Duration(minutes: 4, seconds: 50);
+      const pollingInterval = Duration(seconds: 2);
+
       while (stopwatch.elapsed < timeout) {
-        final response = await client
-            .post(Uri.parse('$baseUrl/api/auth/telegram/status'), body: {'token': code})
-            .timeout(timeout - stopwatch.elapsed);
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw Exception(_serverMessage(response, 'Could not check Telegram login status'));
-        }
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
         _throwIfCancelled();
-        if (data['status'] == 'done') {
+
+        final remaining = timeout - stopwatch.elapsed;
+
+        final response = await client
+            .post(
+              Uri.parse('$baseUrl/api/auth/telegram/status/'),
+              body: {
+                // Backend expects "code", not "token".
+                'code': code,
+              },
+            )
+            .timeout(remaining);
+
+        _throwIfCancelled();
+
+        if (response.statusCode < 200 ||
+            response.statusCode >= 300) {
+          throw Exception(
+            _serverMessage(
+              response,
+              'Could not check Telegram login status',
+            ),
+          );
+        }
+
+        final data =
+            jsonDecode(response.body) as Map<String, dynamic>;
+
+        final status = data['status'];
+
+        // Django returns "authenticated" after successful exchange.
+        if (status == 'authenticated') {
           return data;
         }
-        if (data['status'] == 'expired') {
-          throw Exception('This Telegram sign-in code expired. Start again and complete Telegram within five minutes.');
+
+        if (status == 'expired') {
+          throw Exception(
+            'This Telegram sign-in code expired. '
+            'Start again and complete Telegram within five minutes.',
+          );
         }
-        if (data['status'] == 'error' || data['status'] == 'failed') {
-          throw Exception('The sign-in code was not found by the backend. Check the Telegram webhook, then try again.');
+
+        if (status == 'error' || status == 'failed') {
+          throw Exception(
+            'Telegram sign-in failed. Check the Telegram webhook '
+            'and try again.',
+          );
         }
-        await Future<void>.delayed(const Duration(seconds: 2));
+
+        // "pending" means the user has not confirmed through Telegram.
+        await Future<void>.delayed(pollingInterval);
       }
-      throw TimeoutException('Telegram did not complete sign-in in time. Check the bot webhook URL and secret, then try again.');
+
+      throw TimeoutException(
+        'Telegram did not complete sign-in in time. '
+        'Check the bot webhook URL and try again.',
+      );
     } catch (_) {
       if (_cancelled) {
         throw Exception('Telegram sign-in cancelled.');
       }
+
       rethrow;
     } finally {
       client.close();
+
       if (identical(_activeClient, client)) {
         _activeClient = null;
       }
+
       _activeTelegramAppUri = null;
       _activeTelegramWebUri = null;
     }
@@ -124,15 +229,21 @@ class TelegramAuthService {
     }
   }
 
-  static String _serverMessage(http.Response response, String fallback) {
+  static String _serverMessage(
+    http.Response response,
+    String fallback,
+  ) {
     try {
       final body = jsonDecode(response.body);
-      if (body is Map<String, dynamic> && body['error'] is String) {
+
+      if (body is Map<String, dynamic> &&
+          body['error'] is String) {
         return body['error'] as String;
       }
     } on FormatException {
-      // Proxies and server errors may return HTML instead of JSON.
+      // Server may return HTML instead of JSON.
     }
+
     return '$fallback (HTTP ${response.statusCode}).';
   }
 }

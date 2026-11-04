@@ -56,7 +56,7 @@ class TelegramAuthService {
         : configuredBaseUrl;
     try {
       final startResponse = await client
-          .post(Uri.parse('$baseUrl/api/auth/telegram/start'))
+          .post(Uri.parse('$baseUrl/api/auth/telegram/start/'))
           .timeout(const Duration(seconds: 15));
       _throwIfCancelled();
       if (startResponse.statusCode < 200 || startResponse.statusCode >= 300) {

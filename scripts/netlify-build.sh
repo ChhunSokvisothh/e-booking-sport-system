@@ -21,6 +21,6 @@ flutter pub get
 
 echo "Building Flutter web..."
 flutter build web --release \
-  --dart-define=API_BASE_URL=https://e-booking-sport-system.onrender.com
+  --dart-define=BACKEND_URL=https://e-booking-sport-system.onrender.com
 
 echo "Build completed successfully."

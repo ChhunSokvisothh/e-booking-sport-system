@@ -1,6 +1,7 @@
 
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 from datetime import timedelta
@@ -26,14 +27,17 @@ from core.models import (
 )
 from global_utils.view_helpers import _role_for_user, _uuid_from_user
 
+
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-TOKEN_LIFETIME = timedelta(minutes=5)
-
-
+# Login and linking codes expire after 15 minutes.
 TOKEN_LIFETIME = timedelta(minutes=15)
 
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 def _hash_code(code):
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
@@ -47,14 +51,15 @@ def _telegram_webhook_message(chat_id, message):
     """
     Ask Telegram to send a message through the webhook response.
 
-    This avoids making a second outgoing HTTP request from Render
-    while processing an incoming Telegram update.
+    This avoids a separate outgoing HTTP request from Render.
+    Telegram does not guarantee delivery of webhook-response methods.
     """
     return JsonResponse({
         "method": "sendMessage",
         "chat_id": chat_id,
         "text": message,
     })
+
 
 def _auth_payload(user):
     token, _ = Token.objects.get_or_create(user=user)
@@ -77,9 +82,7 @@ def _auth_payload(user):
 def telegram_start(request):
     """
     Create a temporary Telegram login attempt.
-
     The frontend opens the returned Telegram URL.
-    The user presses Start in the bot.
     """
 
     if not settings.TELEGRAM_BOT_USERNAME:
@@ -101,7 +104,7 @@ def telegram_start(request):
             f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}"
             f"?start={code}"
         ),
-        "expires_in": 900,
+        "expires_in": int(TOKEN_LIFETIME.total_seconds()),
     })
 
 
@@ -157,6 +160,7 @@ def telegram_status(request):
             })
 
         user = attempt.user
+
         attempt.used = True
         attempt.status = "exchanged"
         attempt.save(update_fields=["used", "status"])
@@ -210,8 +214,9 @@ def telegram_link_start(request):
             f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}"
             f"?start={code}"
         ),
-        "expires_in": 900,
+        "expires_in": int(TOKEN_LIFETIME.total_seconds()),
     })
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -258,7 +263,6 @@ def _handle_link_attempt(code, telegram_user):
 
         telegram_id = telegram_user["id"]
 
-        # A Telegram identity must belong to only one Django user.
         identity = TelegramIdentity.objects.filter(
             telegram_user_id=telegram_id
         ).first()
@@ -270,8 +274,6 @@ def _handle_link_attempt(code, telegram_user):
 
         if not identity:
             try:
-                # Nested atomic creates a savepoint. This lets us safely
-                # handle a concurrent attempt to claim the same Telegram ID.
                 with transaction.atomic():
                     TelegramIdentity.objects.create(
                         telegram_user_id=telegram_id,
@@ -279,6 +281,7 @@ def _handle_link_attempt(code, telegram_user):
                         username=telegram_user.get("username", "") or "",
                         first_name=telegram_user.get("first_name", "") or "",
                     )
+
             except IntegrityError:
                 identity = TelegramIdentity.objects.filter(
                     telegram_user_id=telegram_id
@@ -308,29 +311,31 @@ def _handle_link_attempt(code, telegram_user):
 @require_POST
 def telegram_webhook(request):
     """
-    Telegram sends /start <code> here.
+    Process Telegram /start messages.
 
-    The code is checked against:
-      1. TelegramLinkAttempt -> attach Telegram to existing user.
+    Supports:
+      1. TelegramLinkAttempt -> link Telegram to an existing user.
       2. TelegramLoginAttempt -> authenticate an already-linked user.
     """
 
     expected_secret = settings.TELEGRAM_WEBHOOK_SECRET
     received_secret = request.headers.get(
-        "X-Telegram-Bot-Api-Secret-Token", ""
+        "X-Telegram-Bot-Api-Secret-Token",
+        "",
     )
 
     if (
         not expected_secret
         or not hmac.compare_digest(received_secret, expected_secret)
     ):
+        logger.warning("Telegram webhook rejected: invalid secret.")
+
         return JsonResponse(
             {"error": "Unauthorized"},
             status=401,
         )
 
     try:
-        import json
         payload = json.loads(request.body or b"{}")
 
         message = payload.get("message") or {}
@@ -339,43 +344,69 @@ def telegram_webhook(request):
 
         text = (message.get("text") or "").strip()
         chat_id = chat.get("id")
+        telegram_user_id = telegram_user.get("id")
 
-        if not chat_id or not telegram_user.get("id"):
+        logger.info(
+            "TELEGRAM UPDATE RECEIVED | text=%s | chat_id=%s | user_id=%s",
+            text,
+            chat_id,
+            telegram_user_id,
+        )
+
+        if not chat_id or not telegram_user_id:
+            logger.warning("Telegram update missing chat or user ID.")
             return JsonResponse({"ok": True})
 
+        # ----------------------------------------------------
+        # Handle messages other than /start.
+        # ----------------------------------------------------
+
         if not text.startswith("/start"):
-            _telegram_webhook_message(
+            return _telegram_webhook_message(
                 chat_id,
                 "Welcome to E-Booking Sport! "
                 "Use the login or account-linking option in the app "
                 "to connect your Telegram account.",
             )
-            return JsonResponse({"ok": True})
 
         parts = text.split(maxsplit=1)
 
+        # ----------------------------------------------------
+        # Handle /start without a code.
+        # ----------------------------------------------------
+
         if len(parts) < 2:
-            _telegram_webhook_message(
+            return _telegram_webhook_message(
                 chat_id,
                 "Open Telegram from the E-Booking Sport app to continue.",
             )
-            return JsonResponse({"ok": True})
 
         code = parts[1].strip()
 
-        if len(code) > 200:
-            return JsonResponse({"ok": True})
+        if not code or len(code) > 200:
+            return _telegram_webhook_message(
+                chat_id,
+                "Invalid login or linking code. Please try again from the app.",
+            )
+
+        code_hash = _hash_code(code)
 
         # ----------------------------------------------------
-        # FIRST: Check if this is an account-linking attempt.
+        # FIRST: Check account-linking attempts.
         # ----------------------------------------------------
 
         link_attempt_exists = TelegramLinkAttempt.objects.filter(
-            token_hash=_hash_code(code)
+            token_hash=code_hash
         ).exists()
 
         if link_attempt_exists:
             result = _handle_link_attempt(code, telegram_user)
+
+            logger.info(
+                "TELEGRAM LINK RESULT | result=%s | user_id=%s",
+                result,
+                telegram_user_id,
+            )
 
             messages = {
                 "linked": (
@@ -396,76 +427,96 @@ def telegram_webhook(request):
                 ),
             }
 
-            _telegram_webhook_message(
+            return _telegram_webhook_message(
                 chat_id,
-                messages.get(result, "Unable to link your account."),
+                messages.get(
+                    result,
+                    "Unable to link your account. Please try again.",
+                ),
             )
 
-            return JsonResponse({"ok": True})
-
         # ----------------------------------------------------
-        # SECOND: Check if this is a login attempt.
+        # SECOND: Check login attempts.
         # ----------------------------------------------------
 
         with transaction.atomic():
             attempt = (
                 TelegramLoginAttempt.objects
                 .select_for_update()
-                .filter(token_hash=_hash_code(code))
+                .filter(token_hash=code_hash)
                 .first()
             )
 
-            if (
-                not attempt
-                or attempt.used
-                or attempt.status != "pending"
-                or attempt.expires_at <= timezone.now()
-            ):
-                if attempt and attempt.expires_at <= timezone.now():
-                    attempt.status = "expired"
-                    attempt.save(update_fields=["status"])
-
+            if not attempt:
                 login_result = "invalid"
+
+            elif attempt.used or attempt.status != "pending":
+                login_result = "invalid"
+
+            elif attempt.expires_at <= timezone.now():
+                attempt.status = "expired"
+                attempt.save(update_fields=["status"])
+                login_result = "expired"
 
             else:
                 identity = TelegramIdentity.objects.filter(
-                    telegram_user_id=telegram_user["id"]
+                    telegram_user_id=telegram_user_id
                 ).first()
 
                 if not identity:
                     login_result = "not_linked"
+
                 else:
                     attempt.user = identity.user
                     attempt.status = "done"
                     attempt.save(update_fields=["user", "status"])
                     login_result = "done"
 
+        logger.info(
+            "TELEGRAM LOGIN RESULT | result=%s | telegram_user_id=%s",
+            login_result,
+            telegram_user_id,
+        )
+
+        # ----------------------------------------------------
+        # Send the appropriate Telegram response.
+        # ----------------------------------------------------
+
         if login_result == "done":
-            _telegram_webhook_message(
+            logger.info(
+                "Telegram login confirmed for Django user_id=%s.",
+                attempt.user_id,
+            )
+
+            return _telegram_webhook_message(
                 chat_id,
-                "Login confirmed! Return to E-Booking Sport to finish "
-                "signing in.",
+                "Login confirmed! Return to E-Booking Sport to finish signing in.",
             )
 
         elif login_result == "not_linked":
-            _telegram_webhook_message(
+            return _telegram_webhook_message(
                 chat_id,
                 "This Telegram account is not linked to an E-Booking Sport "
                 "account yet. Please sign in using your email and password, "
                 "then go to Account Settings → Link Telegram.",
             )
 
-        else:
-            _telegram_webhook_message(
+        elif login_result == "expired":
+            return _telegram_webhook_message(
                 chat_id,
-                "This login code is invalid, expired, or already used. "
+                "This login code has expired. Please start again from the app.",
+            )
+
+        else:
+            return _telegram_webhook_message(
+                chat_id,
+                "This login code is invalid or has already been used. "
                 "Please try again from the app.",
             )
 
-        return JsonResponse({"ok": True})
-
     except Exception:
         logger.exception("Telegram webhook processing failed.")
+
         return JsonResponse(
             {"ok": False, "error": "Webhook processing failed"},
             status=500,

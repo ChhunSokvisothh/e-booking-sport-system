@@ -9,6 +9,7 @@ import 'data/auth_session.dart';
 import '../booking/booking_providers.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
+import 'telegram_account_card.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -433,6 +434,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ),
+        if (!isGuest) ...[
+          const SizedBox(height: 10),
+          const TelegramAccountCard(),
+        ],
         const SizedBox(height: 10),
         Card(
           child: Padding(

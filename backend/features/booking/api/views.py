@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
+from features.booking.api.telegram_invoices import deliver_paid_booking_invoice, retry_telegram_invoice
 from global_utils.view_helpers import (
     PAYMENT_WINDOW_MINUTES,
     _create_confirmed_booking_from_target,
@@ -420,6 +421,9 @@ def mock_payment_endpoint(request):
             if slot_for_sync is not None:
                 _sync_to_supabase_async(slot=slot_for_sync, booking=booking)
 
+        for paid_booking in created_bookings:
+            deliver_paid_booking_invoice(paid_booking.id)
+
         return Response(
             {
                 'type': 'payment_success',
@@ -516,6 +520,9 @@ def mock_payment_endpoint(request):
 
     for slot, booking in zip(slots_to_sync, bookings_to_sync):
         _sync_to_supabase_async(slot=slot, booking=booking)
+
+    for paid_booking in bookings_to_sync:
+        deliver_paid_booking_invoice(paid_booking.id)
 
     return Response(
         {

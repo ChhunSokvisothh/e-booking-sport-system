@@ -1,6 +1,7 @@
 
 import re
 import uuid
+import logging
 
 from django.contrib.auth import authenticate
 from django.utils import timezone
@@ -205,11 +206,13 @@ def auth_profile(request):
     })
 
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def avatar_upload_url(request):
     extension = (request.data.get('extension') or '').lower()
     allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
+
     if extension not in allowed_extensions:
         return Response(
             {'error': 'Only JPG, PNG and WebP images are supported.'},
@@ -217,14 +220,21 @@ def avatar_upload_url(request):
         )
 
     path = f'{request.user.pk}/avatar-{uuid.uuid4().hex}.{extension}'
+
     try:
         token = create_upload_permission(path)
         return Response({'path': path, 'token': token})
+
     except Exception:
+        logging.exception(
+            'Avatar signed upload URL creation failed for user %s',
+            request.user.pk,
+        )
         return Response(
             {'error': 'Could not create a secure upload permission.'},
             status=status.HTTP_502_BAD_GATEWAY,
         )
+
 
 
 @api_view(['POST'])

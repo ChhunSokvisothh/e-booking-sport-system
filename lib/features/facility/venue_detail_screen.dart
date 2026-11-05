@@ -695,7 +695,6 @@ class VenueDetailScreen extends ConsumerWidget {
           ),
           ],
         ),
-      ),
     );
   }
 }

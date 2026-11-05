@@ -200,16 +200,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final uploadToken = permission['token'] as String;
 
       await Supabase.instance.client.storage
-          .from('profile-photos')
-          .uploadBinaryToSignedUrl(
-            path,
-            uploadToken,
-            bytes,
-            fileOptions: FileOptions(
-              contentType: contentType,
-              upsert: false,
-            ),
-          );
+        .from('profile-photos')
+        .uploadBinaryToSignedUrl(
+          path,
+          uploadToken,
+          bytes,
+          FileOptions(
+            contentType: contentType,
+            upsert: false,
+          ),
+        );
 
       await api.postJson(
         '/api/auth/profile/avatar/complete/',

@@ -54,7 +54,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     if (hour < 18) {
       return 'GOOD AFTERNOON';
     }
-    return 'GOOD NIGHT';
+    return 'GOOD EVENING';
   }
 
   @override

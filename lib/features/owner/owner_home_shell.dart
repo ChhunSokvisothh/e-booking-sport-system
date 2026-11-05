@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../shared/ui/app_transitions.dart';
+import '../../shared/ui/app_page_frame.dart';
 import '../auth/data/auth_session.dart';
 import '../../shared/platform/file_download.dart';
 import '../../shared/models/models.dart';
@@ -111,7 +112,9 @@ class _OwnerHomeShellState extends ConsumerState<OwnerHomeShell> {
           ),
         ],
       ),
-      body: IndexedStack(index: _index, children: pages),
+      body: AppPageFrame(
+        child: IndexedStack(index: _index, children: pages),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),

@@ -415,6 +415,8 @@ class UserProfile(models.Model):
     favorite_sport = models.CharField(max_length=32, blank=True, default='football')
     push_notifications = models.BooleanField(default=True)
     special_offers = models.BooleanField(default=False)
+    # Private Supabase Storage object path; never store an expiring signed URL.
+    avatar_path = models.CharField(max_length=500, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

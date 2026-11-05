@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../shared/ui/app_page_frame.dart';
 import 'booking_providers.dart';
 import 'booking_receipt_utils.dart';
 
@@ -35,7 +36,8 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Staff Check-in Desk')),
-      body: bookingsAsync.when(
+      body: AppPageFrame(
+        child: bookingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => Center(
           child: OutlinedButton.icon(
@@ -164,6 +166,7 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
             ],
           );
         },
+        ),
       ),
     );
   }

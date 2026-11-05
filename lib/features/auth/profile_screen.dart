@@ -641,12 +641,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   alignment: Alignment.centerRight,
                   child: FilledButton.icon(
                     onPressed: () async {
-                      await _savePrefs();
-                      if (!context.mounted) {
-                        return;
-                      }
+                      final saved = await _savePrefs();
+                      if (!context.mounted || !saved) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Profile preferences saved')),
+                        SnackBar(
+                          content: Text(session == null
+                              ? 'Preferences saved on this device'
+                              : 'Profile saved to your account'),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.save_outlined),

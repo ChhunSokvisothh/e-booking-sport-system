@@ -12,6 +12,16 @@ import '../facility/favorite_facility_provider.dart';
 import '../facility/facility_providers.dart';
 import '../facility/venue_detail_screen.dart';
 
+final dashboardProfileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final session = ref.watch(authSessionProvider);
+  if (session == null) return null;
+
+  return ref.watch(apiClientProvider).getMap(
+    '/api/auth/profile/',
+    token: session.token,
+  );
+});
+
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({
     super.key,
@@ -78,7 +88,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final activeCouponsAsync = ref.watch(activeCouponsProvider);
     final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
     final session = ref.watch(authSessionProvider);
-    final displayName = _buildDisplayName(session);
+    final profileAsync = ref.watch(dashboardProfileProvider);
+    final profile = profileAsync.value;
+    final savedDisplayName = (profile?['display_name'] as String?)?.trim() ?? '';
+    final displayName = savedDisplayName.isNotEmpty
+        ? savedDisplayName
+        : _buildDisplayName(session);
+    final avatarUrl = (profile?['avatar_url'] as String?)?.trim();
 
     final coupons = activeCouponsAsync.value ?? const <CouponItem>[];
     CouponItem? topCoupon;
@@ -92,6 +108,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       onRefresh: () async {
         ref.invalidate(facilityListProvider);
         ref.invalidate(liveSlotAvailabilityProvider(allLiveSlotsQuery));
+        ref.invalidate(dashboardProfileProvider);
       },
       child: ListView(
         padding: EdgeInsets.fromLTRB(horizontalPadding, 18, horizontalPadding, 110),
@@ -153,11 +170,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 showDot: topCoupon != null,
               ),
               const SizedBox(width: 10),
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 20,
-                backgroundImage: NetworkImage(
-                  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
-                ),
+                backgroundColor: const Color(0xFFE5E7EB),
+                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : null,
+                onBackgroundImageError: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? (_, _) {}
+                    : null,
+                child: avatarUrl == null || avatarUrl.isEmpty
+                    ? const Icon(Icons.person_rounded, color: Color(0xFF6B7280))
+                    : null,
               ),
             ],
           ),
@@ -511,20 +535,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
     }).toList()
       ..sort((a, b) => b.rating.compareTo(a.rating));
-  }
-
-  String _buildDisplayName(AuthSession? session) {
-    if (session == null) {
-      return 'Sports Lover';
-    }
-    final raw = session.email.split('@').first;
-    final parts = raw.split(RegExp(r'[._-]+')).where((e) => e.isNotEmpty).toList();
-    if (parts.isEmpty) {
-      return 'Sports Lover';
-    }
-    return parts
-        .map((p) => '${p[0].toUpperCase()}${p.substring(1).toLowerCase()}')
-        .join(' ');
   }
 
   String _labelForSport(String sportType) {

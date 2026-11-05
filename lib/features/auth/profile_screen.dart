@@ -69,6 +69,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('profile_image_base64'); // Remove the old device-only Base64 avatar.
     final session = ref.read(authSessionProvider);
 
     try {
@@ -239,6 +240,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     } finally {
       if (mounted) setState(() => _avatarUploading = false);
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null || _avatarUrl == null || _avatarUrl!.isEmpty) return;
+
+    try {
+      await ref.read(apiClientProvider).deleteJson(
+        '/api/auth/profile/avatar/',
+        token: session.token,
+      );
+      if (!mounted) return;
+      setState(() => _avatarUrl = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture removed.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not remove photo: ${error.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
     }
   }
 
@@ -418,6 +445,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   onTap: _avatarUploading ? () {} : _pickProfilePhoto,
                 ),
               ),
+              if (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _removeProfilePhoto,
+                  icon: const Icon(Icons.delete_outline, color: Colors.white),
+                  label: const Text(
+                    'Remove profile photo',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
               const SizedBox(height: 10),
               if (tiny)
                 Column(

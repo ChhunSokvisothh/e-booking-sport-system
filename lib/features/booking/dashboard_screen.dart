@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../auth/data/auth_session.dart';
 import '../../shared/models/models.dart';
+import '../../shared/ui/app_theme.dart';
+import '../../shared/ui/motion.dart';
 import '../../shared/ui/sport_visuals.dart';
 import 'booking_providers.dart';
 import '../facility/favorite_facility_provider.dart';
@@ -94,47 +96,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: ListView(
         padding: EdgeInsets.fromLTRB(horizontalPadding, 18, horizontalPadding, 110),
         children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0B0F1A), Color(0xFF2A3342)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
-                  blurRadius: 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.sports_score, color: Colors.white, size: 30),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Today Highlights',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
-                      ),
-                      SizedBox(height: 3),
-                      Text(
-                        'Find courts fast, stack multiple hours, and pay in one flow.',
-                        style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          FadeInUp(
+            child: _HomeHero(
+              wide: tablet,
+              onQuickBook: () => widget.onOpenQuickBook(null),
+              onExplore: widget.onOpenExplore,
             ),
           ),
+          const SizedBox(height: 22),
           Row(
             children: [
               Expanded(
@@ -207,7 +176,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Color(0xFF111318), width: 1.2),
+                borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
               ),
             ),
           ),
@@ -262,10 +231,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   child: Ink(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF111318) : Colors.white,
+                      color: isActive ? AppColors.ink : Colors.white,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
-                        color: isActive ? const Color(0xFF111318) : const Color(0xFFE5E7EB),
+                        color: isActive ? AppColors.ink : AppColors.border,
                       ),
                     ),
                     child: ConstrainedBox(
@@ -279,7 +248,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           textAlign: TextAlign.center,
                           strutStyle: const StrutStyle(height: 1.12, forceStrutHeight: true),
                           style: TextStyle(
-                            color: isActive ? Colors.white : const Color(0xFF4B5563),
+                            color: isActive ? AppColors.accent : AppColors.inkSoft,
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
                             height: 1.1,
@@ -307,7 +276,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     onPressed: () => widget.onOpenQuickBook(null),
                     child: const Text(
                       'Quick Book',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF)),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.primary),
                     ),
                   ),
                 ),
@@ -325,7 +294,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   onPressed: () => widget.onOpenQuickBook(null),
                   child: Text(
                     'Quick Book',
-                    style: TextStyle(fontSize: compact ? 15 : 18, fontWeight: FontWeight.w700, color: const Color(0xFF9CA3AF)),
+                    style: TextStyle(fontSize: compact ? 15 : 18, fontWeight: FontWeight.w700, color: AppColors.primary),
                   ),
                 ),
               ],
@@ -358,7 +327,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     final venue = featured[index];
                     return SizedBox(
                       width: MediaQuery.of(context).size.width.clamp(280, 470).toDouble() - 40,
-                      child: _VenueCard(
+                      child: FadeInUp(
+                        delay: Duration(milliseconds: 80 * index),
+                        child: HoverLift(
+                        child: _VenueCard(
                         venue: venue,
                         isFavorite: favoriteIds.contains(venue.facility.id),
                         onToggleFavorite: () async {
@@ -378,6 +350,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           selected.facility,
                           selected.openHours,
                           selected.rating,
+                        ),
+                      ),
                         ),
                       ),
                     );
@@ -1099,6 +1073,108 @@ class _AssetOrNetworkImage extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+
+class _HomeHero extends StatelessWidget {
+  const _HomeHero({required this.wide, required this.onQuickBook, required this.onExplore});
+
+  final bool wide;
+  final VoidCallback onQuickBook;
+  final VoidCallback onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: SizedBox(
+        height: wide ? 320 : 250,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/images/sports/all_sports.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const DecoratedBox(
+                decoration: BoxDecoration(gradient: AppColors.heroGradient),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                  colors: [
+                    AppColors.ink.withValues(alpha: 0.92),
+                    AppColors.primaryDark.withValues(alpha: 0.55),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(wide ? 32 : 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: const Text(
+                      'LIVE COURTS TODAY',
+                      style: TextStyle(
+                        color: AppColors.onAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Book your game.\nPlay tonight.',
+                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                          color: Colors.white,
+                          fontSize: wide ? 44 : 30,
+                          height: 1.05,
+                          letterSpacing: -1,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: onQuickBook,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: AppColors.onAccent,
+                        ),
+                        icon: const Icon(Icons.bolt_rounded),
+                        label: const Text('Quick Book'),
+                      ),
+                      OutlinedButton(
+                        onPressed: onExplore,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white54),
+                        ),
+                        child: const Text('Explore venues'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -56,6 +56,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _activeSport = 'all';
   String _searchText = '';
 
+  String _buildDisplayName(AuthSession? session) {
+    final email = session?.email.trim() ?? '';
+    if (email.isEmpty) return 'Sports Lover';
+
+    final username = email.split('@').first;
+    final words = username
+        .replaceAll(RegExp(r'[._-]+'), ' ')
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .toList();
+
+    return words.isEmpty ? 'Sports Lover' : words.join(' ');
+  }
+
   String _timeGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) {

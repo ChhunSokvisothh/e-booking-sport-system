@@ -9,9 +9,10 @@ COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 
 COPY . .
-RUN printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\nBACKEND_URL=%s\n' \
-        "$SUPABASE_URL" "$SUPABASE_ANON_KEY" "$BACKEND_URL" > .env \
-    && flutter build web --release --dart-define=BACKEND_URL="$BACKEND_URL"
+RUN flutter build web --release \
+    --dart-define=BACKEND_URL="$BACKEND_URL" \
+    --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+    --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
 FROM nginx:1.29-alpine
 

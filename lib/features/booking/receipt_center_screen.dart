@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../shared/models/models.dart';
+import '../../shared/ui/app_page_frame.dart';
 import 'booking_providers.dart';
 import 'booking_receipt_utils.dart';
 
@@ -16,7 +17,8 @@ class ReceiptCenterScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Receipt Center')),
-      body: bookingsAsync.when(
+      body: AppPageFrame(
+        child: bookingsAsync.when(
         loading: () => const _ReceiptSkeletonList(),
         error: (error, stack) => Center(
           child: OutlinedButton.icon(
@@ -43,6 +45,7 @@ class ReceiptCenterScreen extends ConsumerWidget {
             ),
           );
         },
+        ),
       ),
     );
   }

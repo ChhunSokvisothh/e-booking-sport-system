@@ -68,31 +68,91 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted) {
-      return;
+    final session = ref.read(authSessionProvider);
+
+    try {
+      if (session == null) {
+        if (!mounted) return;
+        setState(() {
+          _pushEnabled = prefs.getBool('profile_push_enabled') ?? true;
+          _offersEnabled = prefs.getBool('profile_offers_enabled') ?? false;
+          _displayNameController.text = prefs.getString('profile_display_name') ?? '';
+          _cityController.text = prefs.getString('profile_city') ?? 'Phnom Penh';
+          _favoriteSport = prefs.getString('profile_favorite_sport') ?? 'Football';
+          _profileImageBase64 = prefs.getString('profile_image_base64');
+          _loadingPrefs = false;
+        });
+        return;
+      }
+
+      final profile = await ref.read(apiClientProvider).getMap(
+        '/api/auth/profile/',
+        token: session.token,
+      );
+      if (!mounted) return;
+      final sport = (profile['favorite_sport'] as String? ?? 'football').toLowerCase();
+      setState(() {
+        _pushEnabled = profile['push_notifications'] as bool? ?? true;
+        _offersEnabled = profile['special_offers'] as bool? ?? false;
+        _displayNameController.text = profile['display_name'] as String? ?? '';
+        _cityController.text = profile['preferred_city'] as String? ?? 'Phnom Penh';
+        _favoriteSport = _favoriteSports.firstWhere(
+          (item) => item.toLowerCase() == sport,
+          orElse: () => 'Football',
+        );
+        _profileImageBase64 = prefs.getString('profile_image_base64');
+        _loadingPrefs = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _profileImageBase64 = prefs.getString('profile_image_base64');
+        _loadingPrefs = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load profile from server: ${error.toString().replaceFirst('Exception: ', '')}')),
+      );
     }
-    setState(() {
-      _pushEnabled = prefs.getBool('profile_push_enabled') ?? true;
-      _offersEnabled = prefs.getBool('profile_offers_enabled') ?? false;
-      _displayNameController.text = prefs.getString('profile_display_name') ?? '';
-      _cityController.text = prefs.getString('profile_city') ?? 'Phnom Penh';
-      _favoriteSport = prefs.getString('profile_favorite_sport') ?? 'Football';
-      _profileImageBase64 = prefs.getString('profile_image_base64');
-      _loadingPrefs = false;
-    });
   }
 
-  Future<void> _savePrefs() async {
+  Future<bool> _savePrefs() async {
+    final session = ref.read(authSessionProvider);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('profile_push_enabled', _pushEnabled);
-    await prefs.setBool('profile_offers_enabled', _offersEnabled);
-    await prefs.setString('profile_display_name', _displayNameController.text.trim());
-    await prefs.setString('profile_city', _cityController.text.trim());
-    await prefs.setString('profile_favorite_sport', _favoriteSport);
-    if (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty) {
-      await prefs.setString('profile_image_base64', _profileImageBase64!);
-    } else {
-      await prefs.remove('profile_image_base64');
+
+    try {
+      if (session == null) {
+        await prefs.setBool('profile_push_enabled', _pushEnabled);
+        await prefs.setBool('profile_offers_enabled', _offersEnabled);
+        await prefs.setString('profile_display_name', _displayNameController.text.trim());
+        await prefs.setString('profile_city', _cityController.text.trim());
+        await prefs.setString('profile_favorite_sport', _favoriteSport);
+      } else {
+        await ref.read(apiClientProvider).patchJson(
+          '/api/auth/profile/',
+          {
+            'display_name': _displayNameController.text.trim(),
+            'preferred_city': _cityController.text.trim(),
+            'favorite_sport': _favoriteSport.toLowerCase(),
+            'push_notifications': _pushEnabled,
+            'special_offers': _offersEnabled,
+          },
+          token: session.token,
+        );
+      }
+
+      if (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty) {
+        await prefs.setString('profile_image_base64', _profileImageBase64!);
+      } else {
+        await prefs.remove('profile_image_base64');
+      }
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: ${error.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
+      return false;
     }
   }
 

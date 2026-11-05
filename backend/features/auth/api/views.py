@@ -3,7 +3,6 @@ import re
 import uuid
 
 from django.contrib.auth import authenticate
-from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -234,7 +233,7 @@ def avatar_upload_complete(request):
     path = (request.data.get('path') or '').strip()
     expected_prefix = f'{request.user.pk}/'
     valid_path = re.fullmatch(
-        rf'{request.user.pk}/avatar-[0-9a-f]{{32}}\\.(?:jpg|jpeg|png|webp)',
+        rf'{request.user.pk}/avatar-[0-9a-f]{{32}}\.(?:jpg|jpeg|png|webp)',
         path,
     )
     if not valid_path or not path.startswith(expected_prefix):

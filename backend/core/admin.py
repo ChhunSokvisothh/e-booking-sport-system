@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Booking, ChatMessage, ChatSession, Facility, OwnerApplication, TimeSlot
+from .models import Booking, ChatMessage, ChatSession, Facility, OwnerApplication, TimeSlot, UserProfile
 
 admin.site.register(Facility)
 admin.site.register(TimeSlot)
@@ -24,3 +24,9 @@ class OwnerApplicationAdmin(admin.ModelAdmin):
     list_display = ('venue_name', 'user', 'status', 'created_at', 'reviewed_at')
     list_filter = ('status',)
     actions = [approve_owner_applications]
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'display_name', 'preferred_city', 'favorite_sport', 'updated_at')
+    search_fields = ('user__email', 'display_name', 'preferred_city')

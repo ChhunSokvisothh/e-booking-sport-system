@@ -13,7 +13,7 @@ from global_utils.view_helpers import (
     _role_for_user,
     _uuid_from_user,
 )
-from core.models import OwnerApplication
+from core.models import OwnerApplication, UserProfile
 
 def _ensure_owner_access(user):
     application = OwnerApplication.objects.filter(user_id=user.id).first()
@@ -142,3 +142,45 @@ def auth_me(request):
             'owner_status': owner_status,
         }
     )
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def auth_profile(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    if request.method == 'PATCH':
+        allowed_fields = {
+            'display_name': (str, 100),
+            'preferred_city': (str, 100),
+            'favorite_sport': (str, 32),
+        }
+        for field, (expected_type, max_length) in allowed_fields.items():
+            if field in request.data:
+                value = request.data[field]
+                if not isinstance(value, expected_type):
+                    return Response({'error': f'{field} must be text.'}, status=status.HTTP_400_BAD_REQUEST)
+                value = value.strip()
+                if len(value) > max_length:
+                    return Response({'error': f'{field} must be {max_length} characters or fewer.'}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(profile, field, value)
+
+        for field in ('push_notifications', 'special_offers'):
+            if field in request.data:
+                value = request.data[field]
+                if not isinstance(value, bool):
+                    return Response({'error': f'{field} must be true or false.'}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(profile, field, value)
+
+        valid_sports = {'football', 'billiard', 'pickleball', 'volleyball', 'basketball', 'futsal', 'tennis', 'badminton'}
+        if profile.favorite_sport and profile.favorite_sport.lower() not in valid_sports:
+            return Response({'error': 'Choose a valid favorite sport.'}, status=status.HTTP_400_BAD_REQUEST)
+        profile.save()
+
+    return Response({
+        'display_name': profile.display_name,
+        'preferred_city': profile.preferred_city,
+        'favorite_sport': profile.favorite_sport,
+        'push_notifications': profile.push_notifications,
+        'special_offers': profile.special_offers,
+    })

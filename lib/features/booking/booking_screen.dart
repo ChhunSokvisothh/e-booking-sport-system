@@ -31,7 +31,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     if (hour < 18) {
       return 'GOOD AFTERNOON';
     }
-    return 'GOOD NIGHT';
+    return 'GOOD EVENING';
   }
   bool _isUpcoming(BookingItem booking) {
     if (booking.status.toLowerCase() == 'cancelled') {

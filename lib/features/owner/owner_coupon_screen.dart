@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/data/auth_session.dart';
+import '../../shared/ui/app_page_frame.dart';
 import '../../shared/models/models.dart';
 import '../booking/booking_providers.dart';
 import '../facility/facility_providers.dart';
@@ -334,8 +335,9 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Coupon Management')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      body: AppPageFrame(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
           Container(
             padding: const EdgeInsets.all(14),
@@ -435,7 +437,8 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
               return _buildCouponsList(_couponRows!);
             },
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -1,4 +1,8 @@
 
+import re
+import uuid
+import logging
+
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from rest_framework import status
@@ -13,7 +17,13 @@ from global_utils.view_helpers import (
     _role_for_user,
     _uuid_from_user,
 )
-from core.models import OwnerApplication
+from core.models import OwnerApplication, UserProfile
+from .avatar_storage import (
+    avatar_exists,
+    create_download_url,
+    create_upload_permission,
+    delete_avatar,
+)
 
 def _ensure_owner_access(user):
     application = OwnerApplication.objects.filter(user_id=user.id).first()
@@ -142,3 +152,161 @@ def auth_me(request):
             'owner_status': owner_status,
         }
     )
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def auth_profile(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    if request.method == 'PATCH':
+        allowed_fields = {
+            'display_name': (str, 100),
+            'preferred_city': (str, 100),
+            'favorite_sport': (str, 32),
+        }
+        for field, (expected_type, max_length) in allowed_fields.items():
+            if field in request.data:
+                value = request.data[field]
+                if not isinstance(value, expected_type):
+                    return Response({'error': f'{field} must be text.'}, status=status.HTTP_400_BAD_REQUEST)
+                value = value.strip()
+                if len(value) > max_length:
+                    return Response({'error': f'{field} must be {max_length} characters or fewer.'}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(profile, field, value)
+
+        for field in ('push_notifications', 'special_offers'):
+            if field in request.data:
+                value = request.data[field]
+                if not isinstance(value, bool):
+                    return Response({'error': f'{field} must be true or false.'}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(profile, field, value)
+
+        valid_sports = {'football', 'billiard', 'pickleball', 'volleyball', 'basketball', 'futsal', 'tennis', 'badminton'}
+        if profile.favorite_sport and profile.favorite_sport.lower() not in valid_sports:
+            return Response({'error': 'Choose a valid favorite sport.'}, status=status.HTTP_400_BAD_REQUEST)
+        profile.save()
+
+    avatar_url = None
+    if profile.avatar_path:
+        try:
+            avatar_url = create_download_url(profile.avatar_path)
+        except Exception:
+            # Keep profile data available even if Storage is temporarily unavailable.
+            avatar_url = None
+
+    return Response({
+        'display_name': profile.display_name,
+        'preferred_city': profile.preferred_city,
+        'favorite_sport': profile.favorite_sport,
+        'push_notifications': profile.push_notifications,
+        'special_offers': profile.special_offers,
+        'avatar_path': profile.avatar_path,
+        'avatar_url': avatar_url,
+    })
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def avatar_upload_url(request):
+    extension = (request.data.get('extension') or '').lower()
+    allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
+
+    if extension not in allowed_extensions:
+        return Response(
+            {'error': 'Only JPG, PNG and WebP images are supported.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    path = f'{request.user.pk}/avatar-{uuid.uuid4().hex}.{extension}'
+
+    try:
+        token = create_upload_permission(path)
+        return Response({'path': path, 'token': token})
+
+    except Exception:
+        logging.exception(
+            'Avatar signed upload URL creation failed for user %s',
+            request.user.pk,
+        )
+        return Response(
+            {'error': 'Could not create a secure upload permission.'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def avatar_upload_complete(request):
+    path = (request.data.get('path') or '').strip()
+    expected_prefix = f'{request.user.pk}/'
+    valid_path = re.fullmatch(
+        rf'{request.user.pk}/avatar-[0-9a-f]{{32}}\.(?:jpg|jpeg|png|webp)',
+        path,
+    )
+    if not valid_path or not path.startswith(expected_prefix):
+        return Response(
+            {'error': 'Invalid avatar object path.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        metadata = avatar_exists(path)
+        object_metadata = metadata.get('metadata') or {}
+        size = object_metadata.get('size') or metadata.get('size')
+        content_type = (
+            object_metadata.get('mimetype')
+            or object_metadata.get('contentType')
+            or metadata.get('mimetype')
+        )
+        if size is not None and int(size) > 5 * 1024 * 1024:
+            delete_avatar(path)
+            return Response(
+                {'error': 'Avatar must be smaller than 5 MB.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
+        if content_type and content_type not in allowed_types:
+            delete_avatar(path)
+            return Response(
+                {'error': 'Uploaded file is not an allowed image type.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    except Exception:
+        return Response(
+            {'error': 'Uploaded avatar could not be verified in private storage.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    previous_path = profile.avatar_path
+    profile.avatar_path = path
+    profile.save(update_fields=['avatar_path', 'updated_at'])
+
+    if previous_path and previous_path != path:
+        try:
+            delete_avatar(previous_path)
+        except Exception:
+            # Profile update remains successful; stale objects can be cleaned up later.
+            pass
+
+    return Response({'message': 'Profile picture updated.', 'avatar_path': path})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def avatar_delete(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    previous_path = profile.avatar_path
+    profile.avatar_path = ''
+    profile.save(update_fields=['avatar_path', 'updated_at'])
+
+    if previous_path:
+        try:
+            delete_avatar(previous_path)
+        except Exception:
+            pass
+
+    return Response({'message': 'Profile picture removed.'})

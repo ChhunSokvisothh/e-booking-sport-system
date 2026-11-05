@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'data/auth_session.dart';
@@ -28,7 +28,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _cityController = TextEditingController(text: 'Phnom Penh');
   String _favoriteSport = 'Football';
-  String? _profileImageBase64;
+  String? _avatarUrl;
+  bool _avatarUploading = false;
   bool _telegramLoading = true;
   bool _telegramBusy = false;
   bool _telegramLinked = false;
@@ -68,53 +69,202 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted) {
-      return;
+    await prefs.remove('profile_image_base64'); // Remove the old device-only Base64 avatar.
+    final session = ref.read(authSessionProvider);
+
+    try {
+      if (session == null) {
+        if (!mounted) return;
+        setState(() {
+          _pushEnabled = prefs.getBool('profile_push_enabled') ?? true;
+          _offersEnabled = prefs.getBool('profile_offers_enabled') ?? false;
+          _displayNameController.text = prefs.getString('profile_display_name') ?? '';
+          _cityController.text = prefs.getString('profile_city') ?? 'Phnom Penh';
+          _favoriteSport = prefs.getString('profile_favorite_sport') ?? 'Football';
+          _loadingPrefs = false;
+        });
+        return;
+      }
+
+      final profile = await ref.read(apiClientProvider).getMap(
+        '/api/auth/profile/',
+        token: session.token,
+      );
+      if (!mounted) return;
+      final sport = (profile['favorite_sport'] as String? ?? 'football').toLowerCase();
+      setState(() {
+        _pushEnabled = profile['push_notifications'] as bool? ?? true;
+        _offersEnabled = profile['special_offers'] as bool? ?? false;
+        _displayNameController.text = profile['display_name'] as String? ?? '';
+        _cityController.text = profile['preferred_city'] as String? ?? 'Phnom Penh';
+        _favoriteSport = _favoriteSports.firstWhere(
+          (item) => item.toLowerCase() == sport,
+          orElse: () => 'Football',
+        );
+        _avatarUrl = profile['avatar_url'] as String?;
+        _loadingPrefs = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = null;
+        _loadingPrefs = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load profile from server: ${error.toString().replaceFirst('Exception: ', '')}')),
+      );
     }
-    setState(() {
-      _pushEnabled = prefs.getBool('profile_push_enabled') ?? true;
-      _offersEnabled = prefs.getBool('profile_offers_enabled') ?? false;
-      _displayNameController.text = prefs.getString('profile_display_name') ?? '';
-      _cityController.text = prefs.getString('profile_city') ?? 'Phnom Penh';
-      _favoriteSport = prefs.getString('profile_favorite_sport') ?? 'Football';
-      _profileImageBase64 = prefs.getString('profile_image_base64');
-      _loadingPrefs = false;
-    });
   }
 
-  Future<void> _savePrefs() async {
+  Future<bool> _savePrefs() async {
+    final session = ref.read(authSessionProvider);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('profile_push_enabled', _pushEnabled);
-    await prefs.setBool('profile_offers_enabled', _offersEnabled);
-    await prefs.setString('profile_display_name', _displayNameController.text.trim());
-    await prefs.setString('profile_city', _cityController.text.trim());
-    await prefs.setString('profile_favorite_sport', _favoriteSport);
-    if (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty) {
-      await prefs.setString('profile_image_base64', _profileImageBase64!);
-    } else {
-      await prefs.remove('profile_image_base64');
+
+    try {
+      if (session == null) {
+        await prefs.setBool('profile_push_enabled', _pushEnabled);
+        await prefs.setBool('profile_offers_enabled', _offersEnabled);
+        await prefs.setString('profile_display_name', _displayNameController.text.trim());
+        await prefs.setString('profile_city', _cityController.text.trim());
+        await prefs.setString('profile_favorite_sport', _favoriteSport);
+      } else {
+        await ref.read(apiClientProvider).patchJson(
+          '/api/auth/profile/',
+          {
+            'display_name': _displayNameController.text.trim(),
+            'preferred_city': _cityController.text.trim(),
+            'favorite_sport': _favoriteSport.toLowerCase(),
+            'push_notifications': _pushEnabled,
+            'special_offers': _offersEnabled,
+          },
+          token: session.token,
+        );
+      }
+
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: ${error.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
+      return false;
     }
   }
 
   Future<void> _pickProfilePhoto() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to upload a profile picture.')),
+      );
+      return;
+    }
+    if (_avatarUploading) return;
+
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 900, imageQuality: 80);
-      if (picked == null) {
-        return;
-      }
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 900,
+        maxHeight: 900,
+        imageQuality: 82,
+      );
+      if (picked == null) return;
 
       final bytes = await picked.readAsBytes();
-      setState(() {
-        _profileImageBase64 = base64Encode(bytes);
-      });
-      await _savePrefs();
-    } catch (_) {
-      if (!mounted) {
-        return;
+      if (bytes.length > 5 * 1024 * 1024) {
+        throw Exception('Image must be smaller than 5 MB.');
       }
+
+      final extension = picked.name.split('.').last.toLowerCase();
+      const contentTypes = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+      };
+      final contentType = contentTypes[extension];
+      if (contentType == null) {
+        throw Exception('Only JPG, PNG and WebP images are supported.');
+      }
+
+      setState(() => _avatarUploading = true);
+      final api = ref.read(apiClientProvider);
+
+      final permission = await api.postJson(
+        '/api/auth/profile/avatar/upload-url/',
+        {'extension': extension},
+        token: session.token,
+      );
+      final path = permission['path'] as String;
+      final uploadToken = permission['token'] as String;
+
+      await Supabase.instance.client.storage
+        .from('profile-photos')
+        .uploadBinaryToSignedUrl(
+          path,
+          uploadToken,
+          bytes,
+          FileOptions(
+            contentType: contentType,
+            upsert: false,
+          ),
+        );
+
+      await api.postJson(
+        '/api/auth/profile/avatar/complete/',
+        {'path': path},
+        token: session.token,
+      );
+
+      final updatedProfile = await api.getMap(
+        '/api/auth/profile/',
+        token: session.token,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _avatarUrl = updatedProfile['avatar_url'] as String?;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to pick profile photo right now.')),
+        const SnackBar(content: Text('Profile picture updated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Photo upload failed: ${error.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _avatarUploading = false);
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    final session = ref.read(authSessionProvider);
+    if (session == null || _avatarUrl == null || _avatarUrl!.isEmpty) return;
+
+    try {
+      await ref.read(apiClientProvider).deleteJson(
+        '/api/auth/profile/avatar/',
+        token: session.token,
+      );
+      if (!mounted) return;
+      setState(() => _avatarUrl = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture removed.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not remove photo: ${error.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
       );
     }
   }
@@ -248,10 +398,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     radius: 30,
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF0F766E),
-                    backgroundImage: (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty)
-                        ? MemoryImage(base64Decode(_profileImageBase64!))
+                    backgroundImage: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                        ? NetworkImage(_avatarUrl!)
                         : null,
-                    child: (_profileImageBase64 == null || _profileImageBase64!.isEmpty)
+                    child: _avatarUrl == null || _avatarUrl!.isEmpty
                         ? Text(
                             initials,
                             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
@@ -290,11 +440,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 width: double.infinity,
                 child: _GradientActionButton(
                   icon: Icons.photo_camera_outlined,
-                  label: 'Upload Photo',
+                  label: _avatarUploading ? 'Uploading...' : 'Upload Photo',
                   colors: const [Color(0xFF14B8A6), Color(0xFF0EA5E9)],
-                  onTap: _pickProfilePhoto,
+                  onTap: _avatarUploading ? () {} : _pickProfilePhoto,
                 ),
               ),
+              if (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _removeProfilePhoto,
+                  icon: const Icon(Icons.delete_outline, color: Colors.white),
+                  label: const Text(
+                    'Remove profile photo',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
               const SizedBox(height: 10),
               if (tiny)
                 Column(
@@ -581,12 +740,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   alignment: Alignment.centerRight,
                   child: FilledButton.icon(
                     onPressed: () async {
-                      await _savePrefs();
-                      if (!context.mounted) {
-                        return;
-                      }
+                      final saved = await _savePrefs();
+                      if (!context.mounted || !saved) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Profile preferences saved')),
+                        SnackBar(
+                          content: Text(session == null
+                              ? 'Preferences saved on this device'
+                              : 'Profile saved to your account'),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.save_outlined),

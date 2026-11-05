@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/data/auth_session.dart';
+import '../../shared/ui/app_page_frame.dart';
 import '../../shared/models/models.dart';
 import '../facility/facility_providers.dart';
 
@@ -119,8 +120,9 @@ class _OwnerArchiveRecordsScreenState extends ConsumerState<OwnerArchiveRecordsS
 
     return Scaffold(
       appBar: AppBar(title: const Text('Archive Records')),
-      body: RefreshIndicator(
-        onRefresh: _loadArchivedFacilities,
+      body: AppPageFrame(
+        child: RefreshIndicator(
+          onRefresh: _loadArchivedFacilities,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
           children: [
@@ -243,6 +245,7 @@ class _OwnerArchiveRecordsScreenState extends ConsumerState<OwnerArchiveRecordsS
                 ),
               ),
           ],
+          ),
         ),
       ),
     );

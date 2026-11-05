@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../shared/network/api_client.dart';
 import '../auth/data/auth_session.dart';
 import '../../shared/models/models.dart';
+import '../../shared/ui/app_page_frame.dart';
 import '../../shared/ui/sport_visuals.dart';
 import '../facility/facility_providers.dart';
 import 'booking_providers.dart';
@@ -355,7 +356,8 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             colors: [Color(0xFFF9FAFB), Color(0xFFEDEFF2)],
           ),
         ),
-        child: slotsAsync.when(
+        child: AppPageFrame(
+          child: slotsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(
             child: Padding(
@@ -783,6 +785,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
               ],
             );
           },
+          ),
         ),
       ),
     );

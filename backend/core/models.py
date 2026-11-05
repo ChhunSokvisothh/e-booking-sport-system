@@ -401,3 +401,27 @@ class TelegramInvoiceDelivery(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class UserProfile(models.Model):
+    """User-owned preferences stored in the same database as authentication."""
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='profile',
+    )
+    display_name = models.CharField(max_length=100, blank=True)
+    preferred_city = models.CharField(max_length=100, blank=True, default='Phnom Penh')
+    favorite_sport = models.CharField(max_length=32, blank=True, default='football')
+    push_notifications = models.BooleanField(default=True)
+    special_offers = models.BooleanField(default=False)
+    # Private Supabase Storage object path; never store an expiring signed URL.
+    avatar_path = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'core_user_profile'
+
+    def __str__(self):
+        return f'Profile for {self.user}'

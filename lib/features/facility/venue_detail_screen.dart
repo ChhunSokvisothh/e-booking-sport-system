@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../shared/models/models.dart';
 import '../../shared/ui/sport_visuals.dart';
+import '../../shared/ui/app_page_frame.dart';
 import 'favorite_facility_provider.dart';
 
 class VenueDetailScreen extends ConsumerWidget {
@@ -168,9 +169,11 @@ class VenueDetailScreen extends ConsumerWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-        children: [
+      body: AppPageFrame(
+        maxWidth: 1120,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          children: [
           _buildGallery(
             context: context,
             images: galleryImages,
@@ -383,7 +386,8 @@ class VenueDetailScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -689,8 +693,8 @@ class VenueDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 }

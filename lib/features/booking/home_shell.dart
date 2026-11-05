@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/data/auth_session.dart';
 import '../../shared/models/models.dart';
+import '../../shared/ui/app_page_frame.dart';
 import '../auth/profile_screen.dart';
 import '../auth/auth_screen.dart';
 import '../chatbot/chatbot_sheet.dart';
@@ -142,9 +143,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
-      body: IndexedStack(
-        index: _index,
-        children: pages,
+      body: AppPageFrame(
+        child: IndexedStack(
+          index: _index,
+          children: pages,
+        ),
       ),
       floatingActionButton: Semantics(
         button: true,

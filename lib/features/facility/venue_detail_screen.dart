@@ -386,7 +386,8 @@ class VenueDetailScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-        ],
+          ],
+        ),
       ),
     );
   }

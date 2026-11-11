@@ -461,29 +461,22 @@ class VenueDetailScreen extends ConsumerWidget {
             spacing: 18,
             runSpacing: 10,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFE6A700),
-                    size: 21,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    rating.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: _ink,
+              if (rating > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded, color: Color(0xFFE6A700), size: 21),
+                    const SizedBox(width: 5),
+                    Text(
+                      rating.toStringAsFixed(1),
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
                     ),
-                  ),
-                  const SizedBox(width: 5),
-                  const Text(
-                    'rating',
-                    style: TextStyle(color: _muted),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 5),
+                    const Text('rating', style: TextStyle(color: _muted)),
+                  ],
+                )
+              else
+                const Text('Not rated yet', style: TextStyle(color: _muted, fontWeight: FontWeight.w700)),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

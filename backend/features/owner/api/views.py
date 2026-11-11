@@ -33,7 +33,27 @@ def active_coupons_endpoint(request):
         archived_at__isnull=True,
         starts_at__lte=now,
         ends_at__gte=now,
-    ).order_by('-discount_percent', 'code')
+    )
+
+    # Owner coupons are venue-specific. Checkout must request coupons for the
+    # venue being booked; without a venue context, expose only global coupons.
+    facility_id = (request.query_params.get('facility_id') or '').strip()
+    if facility_id:
+        facility = Facility.objects.filter(
+            id=facility_id,
+            is_active=True,
+            archived_at__isnull=True,
+        ).only('owner_user_id').first()
+        if facility is None:
+            return Response({'error': 'Venue not found.'}, status=status.HTTP_404_NOT_FOUND)
+        qs = qs.filter(
+            models.Q(owner_user_id__isnull=True)
+            | models.Q(owner_user_id=facility.owner_user_id)
+        )
+    else:
+        qs = qs.filter(owner_user_id__isnull=True)
+
+    qs = qs.order_by('-discount_percent', 'code')
     return Response(CouponSerializer(qs, many=True).data)
 
 
@@ -89,9 +109,11 @@ def owner_facilities_endpoint(request):
         archived_from_raw = (request.query_params.get('archived_from') or '').strip()
         archived_to_raw = (request.query_params.get('archived_to') or '').strip()
         archive_cutoff = _facility_archive_cutoff(now)
+        # Owners see only venues they created. Unowned/demo venues belong in
+        # the public catalogue, not in a new owner's management dashboard.
         owner_scope = Facility.objects.all()
         if not request.user.is_superuser:
-            owner_scope = owner_scope.filter(models.Q(owner_user_id=owner_uuid) | models.Q(owner_user_id__isnull=True))
+            owner_scope = owner_scope.filter(owner_user_id=owner_uuid)
 
         # Purge archived facilities older than retention window when they have no bookings.
         stale_ids = list(
@@ -215,8 +237,8 @@ def owner_facility_detail_endpoint(request, facility_id):
         return Response({'error': 'Facility not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     owner_uuid = _uuid_from_user(request.user)
-    if facility.owner_user_id and (facility.owner_user_id != owner_uuid) and (not request.user.is_superuser):
-        return Response({'error': 'You can only edit your own venues.'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.is_superuser and facility.owner_user_id != owner_uuid:
+        return Response({'error': 'You can only manage venues that belong to your account.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'DELETE':
         facility.is_active = False

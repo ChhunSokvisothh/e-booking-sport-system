@@ -52,7 +52,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
   @override
   void initState() {
     super.initState();
-    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted && !_processing) {
         ref.invalidate(
           liveSlotAvailabilityWithDiagnosticsProvider(
@@ -138,7 +138,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
           : {'facility_id': _selectedFacilityId!},
       ...?_indoorOnly ? {'is_indoor': 'true'} : null,
       'page': '$_slotPage',
-      'page_size': '50',
+      'page_size': '100',
     };
   }
 

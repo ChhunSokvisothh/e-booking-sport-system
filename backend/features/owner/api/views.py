@@ -317,6 +317,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.latitude = float(request.data.get('latitude'))
         except Exception:
             return Response({'error': 'latitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -90 <= facility.latitude <= 90:
+            return Response({'error': 'latitude must be between -90 and 90'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('latitude')
 
     if 'longitude' in request.data:
@@ -324,6 +326,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.longitude = float(request.data.get('longitude'))
         except Exception:
             return Response({'error': 'longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -180 <= facility.longitude <= 180:
+            return Response({'error': 'longitude must be between -180 and 180'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('longitude')
 
     if len(update_fields) == 1:

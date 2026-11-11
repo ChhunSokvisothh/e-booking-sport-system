@@ -87,7 +87,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final liveSlotsAsync = ref.watch(liveSlotAvailabilityProvider(allLiveSlotsQuery));
     final activeCouponsAsync = ref.watch(activeCouponsProvider);
     final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
-    final session = ref.watch(authSessionProvider);
     final profileAsync = ref.watch(dashboardProfileProvider);
     final profile = profileAsync.value;
     final savedDisplayName = (profile?['display_name'] as String?)?.trim() ?? '';

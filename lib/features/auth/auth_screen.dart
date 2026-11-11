@@ -634,7 +634,13 @@ class _AuthCard extends StatelessWidget {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(isSignUp ? 'Create account' : 'Login'),
+                      : Text(
+                          isSignUp
+                              ? (isOwnerRegistration
+                                  ? 'Pay \$20.00 & Create Owner Account'
+                                  : 'Create account')
+                              : 'Login',
+                        ),
                 ),
               ),
               if (!isSignUp) ...[

@@ -69,7 +69,7 @@ class Facility {
       latitude: _toDouble(json['latitude']),
       longitude: _toDouble(json['longitude']),
       basePricePerHour: _toDouble(json['base_price_per_hour']),
-      rating: _toDouble(json['rating'], fallback: 4.5),
+      rating: _toDouble(json['rating'], fallback: 0.0),
       imageUrl: (image == null || image.isEmpty) ? null : image,
       isActive: json['is_active'] as bool? ?? true,
       archivedAt: (json['archived_at'] as String?) == null

@@ -345,19 +345,37 @@ def owner_coupons_endpoint(request):
         return Response({'error': 'discount_percent must be between 0 and 100'}, status=status.HTTP_400_BAD_REQUEST)
 
     owner_uuid = _uuid_from_user(request.user)
-    coupon, created = Coupon.objects.update_or_create(
-        code=code,
-        defaults={
-            'title': title,
-            'description': description,
-            'discount_percent': discount_percent,
-            'starts_at': starts_at,
-            'ends_at': ends_at,
-            'is_active': True,
-            'archived_at': None,
-            'owner_user_id': owner_uuid,
-        },
-    )
+    try:
+        with transaction.atomic():
+            coupon = Coupon.objects.select_for_update().filter(code=code).first()
+            if coupon is not None and coupon.owner_user_id != owner_uuid and not request.user.is_superuser:
+                return Response(
+                    {'error': 'This coupon code is already in use. Choose a different code.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            created = coupon is None
+            if created:
+                coupon = Coupon(
+                    code=code,
+                    owner_user_id=owner_uuid,
+                )
+
+            coupon.title = title
+            coupon.description = description
+            coupon.discount_percent = discount_percent
+            coupon.starts_at = starts_at
+            coupon.ends_at = ends_at
+            coupon.is_active = True
+            coupon.archived_at = None
+            if coupon.owner_user_id is None or request.user.is_superuser:
+                coupon.owner_user_id = owner_uuid
+            coupon.save()
+    except IntegrityError:
+        return Response(
+            {'error': 'This coupon code is already in use. Choose a different code.'},
+            status=status.HTTP_409_CONFLICT,
+        )
 
     return Response(
         {

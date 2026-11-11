@@ -37,7 +37,7 @@ def _auth_payload(user, token):
         'user_id': user.id,
         'user_uuid': str(_uuid_from_user(user)),
         'email': user.email,
-        'role': 'admin' if user.is_superuser else ('owner' if user.is_staff else 'user'),
+        'role': _role_for_user(user),
         'owner_status': owner_status,
         'is_superuser': bool(user.is_superuser),
     }
@@ -90,7 +90,7 @@ def owner_signup(request):
 
     # This is deliberately a simulated payment for the prototype. A real gateway
     # must replace this client-triggered confirmation before production.
-    user = User.objects.create_user(username=email, email=email, password=password, is_staff=True)
+    user = User.objects.create_user(username=email, email=email, password=password)
     OwnerApplication.objects.create(
         user=user,
         venue_name=venue_name,
@@ -153,7 +153,7 @@ def auth_me(request):
             'user_id': request.user.id,
             'user_uuid': str(_uuid_from_user(request.user)),
             'email': request.user.email,
-            'role': 'admin' if request.user.is_superuser else ('owner' if request.user.is_staff else 'user'),
+            'role': _role_for_user(request.user),
             'owner_status': owner_status,
             'is_superuser': bool(request.user.is_superuser),
             'venue_name': (

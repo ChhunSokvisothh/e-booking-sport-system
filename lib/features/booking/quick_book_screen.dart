@@ -136,9 +136,8 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     final rangeEnd = rangeStart.add(const Duration(days: 6));
 
     return {
-      // When a venue is selected, fetch the whole visible 7-day date strip once.
-      // Date-chip changes then filter this cached result locally instead of
-      // making another network request for every day.
+      // Fetch the whole visible 7-day date strip once. Date-chip changes then
+      // filter this cached result locally instead of making another request.
       'start_date': formatter.format(rangeStart),
       'end_date': formatter.format(rangeEnd),
       ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},

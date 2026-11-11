@@ -191,6 +191,7 @@ def _ensure_rolling_slot_window():
                         facility=facility,
                         start_at=cursor,
                         end_at=cursor + timedelta(hours=1),
+                        court_number=slot.court_number,
                         max_bookings=slot.max_bookings,
                         current_bookings=0,
                         is_open=True,

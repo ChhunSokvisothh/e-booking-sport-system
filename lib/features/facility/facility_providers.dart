@@ -168,9 +168,8 @@ final liveSlotAvailabilityWithDiagnosticsProvider = FutureProvider.autoDispose
       var pageNumber = 1;
       var hasNext = false;
 
-      // Filtered searches request a 7-day window. Follow pagination so venues
-      // with many courts do not silently lose later dates. Keep the old
-      // one-page behavior for broad, unfiltered Quick Book searches.
+      // Date-range searches follow pagination so broad searches and venues
+      // with many courts do not silently lose later dates.
       do {
         final pageQuery = <String, String>{
           ...query,

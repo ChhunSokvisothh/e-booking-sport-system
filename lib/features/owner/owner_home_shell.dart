@@ -1127,12 +1127,32 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
   }
 
   Future<void> _showAddVenueDialog() async {
-    final session = ref.read(authSessionProvider);
+    var session = ref.read(authSessionProvider);
     if (session == null) return;
 
-    _ownerRows ??= List<Facility>.from(
-      ref.read(ownerFacilitiesProvider).asData?.value ?? const <Facility>[],
-    );
+    if ((session.ownerVenueName ?? '').trim().isEmpty) {
+      try {
+        await ref.read(authControllerProvider).refreshSession();
+        session = ref.read(authSessionProvider) ?? session;
+      } catch (_) {
+        // The owner can still enter a venue name manually if session refresh fails.
+      }
+    }
+
+    if (_ownerRows == null) {
+      try {
+        _ownerRows = List<Facility>.from(
+          await ref.read(ownerFacilitiesProvider.future),
+        );
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load your venues: $error')),
+          );
+        }
+        return;
+      }
+    }
     final isFirstVenue = _ownerRows!.isEmpty;
     final registeredVenueName = (session.ownerVenueName ?? '').trim();
     final nameCtrl = TextEditingController(

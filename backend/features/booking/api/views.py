@@ -80,12 +80,21 @@ def manual_booking_endpoint(request):
     except (TimeSlot.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Slot not found or no longer available.'}, status=status.HTTP_404_NOT_FOUND)
 
-    price = Decimal(str(slot.facility.base_price_per_hour))
+    duration_hours = (
+        Decimal(str((slot.end_at - slot.start_at).total_seconds())) / Decimal('3600')
+    ).quantize(Decimal('0.01'))
+    if duration_hours <= Decimal('0.00'):
+        return Response({'error': 'The selected slot has an invalid duration.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    price = (
+        Decimal(str(slot.facility.base_price_per_hour)) * duration_hours
+    ).quantize(Decimal('0.01'))
     target = {
-        'option_id': f'{slot.facility_id}:{slot.id}:1',
+        'option_id': f'{slot.facility_id}:{slot.id}:{format(duration_hours, "f")}',
         'facility_name': slot.facility.name,
         'start_at': slot.start_at.isoformat(),
-        'duration_hours': 1,
+        'end_at': slot.end_at.isoformat(),
+        'duration_hours': float(duration_hours),
         'base_price': str(price),
         'weather_discount': '0.00',
         'empty_slot_discount': '0.00',

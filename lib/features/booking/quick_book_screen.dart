@@ -100,6 +100,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     super.dispose();
   }
 
+  double _slotDurationHours(LiveSlotAvailability slot) {
+    final minutes = slot.endAt.difference(slot.startAt).inMinutes;
+    return minutes > 0 ? minutes / 60.0 : 0.0;
+  }
+
   _SlotVisualState _slotVisualState({
     required bool isPast,
     required bool isAvailable,
@@ -170,9 +175,13 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
     final first = sorted.first;
     final last = sorted.last;
+    final totalHours = sorted.fold<double>(
+      0,
+      (sum, slot) => sum + _slotDurationHours(slot),
+    );
     final total = sorted.fold<double>(
       0,
-      (sum, slot) => sum + slot.basePricePerHour,
+      (sum, slot) => sum + slot.basePricePerHour * _slotDurationHours(slot),
     );
 
     final confirm = await showModalBottomSheet<bool>(
@@ -203,7 +212,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('${sorted.length} hour slot(s) selected'),
+                Text('${sorted.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s)'),
                 const SizedBox(height: 6),
                 Text(
                   'Total: \$${total.toStringAsFixed(2)}',
@@ -263,7 +272,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             startAt: first.startAt,
             endAt: last.endAt,
             totalPrice: total,
-            totalHours: sorted.length.toDouble(),
+            totalHours: totalHours,
           ),
         ),
       );
@@ -423,9 +432,13 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             final isBilliard = _sportType == 'billiard';
             final resourceTitle = isBilliard ? 'Select Table' : 'Select Field';
 
+            final totalHours = selectedSlots.fold<double>(
+              0,
+              (sum, slot) => sum + _slotDurationHours(slot),
+            );
             final total = selectedSlots.fold<double>(
               0,
-              (sum, slot) => sum + slot.basePricePerHour,
+              (sum, slot) => sum + slot.basePricePerHour * _slotDurationHours(slot),
             );
 
             return ListView(
@@ -468,7 +481,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       Text(
                         selectedSlots.isEmpty
                             ? 'Choose one or multiple hours'
-                            : '${selectedSlots.length} slot(s) selected • \$${total.toStringAsFixed(2)}',
+                            : '${selectedSlots.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s) • USD ${total.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w600,
@@ -687,7 +700,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '${selectedSlots.length} hour slot(s) • Total \$${total.toStringAsFixed(2)}',
+                          '${totalHours.toStringAsFixed(2)} hour(s) • Total USD ${total.toStringAsFixed(2)}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],

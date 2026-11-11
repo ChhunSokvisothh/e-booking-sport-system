@@ -2,7 +2,9 @@
 import re
 import uuid
 import logging
+from decimal import Decimal, InvalidOperation
 
+from django.db import IntegrityError, transaction
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from rest_framework import status
@@ -25,26 +27,11 @@ from .avatar_storage import (
     delete_avatar,
 )
 
-def _ensure_owner_access(user):
-    application = OwnerApplication.objects.filter(user_id=user.id).first()
-    if application is None:
-        return
-    fields = []
-    if application.status != OwnerApplication.Status.APPROVED:
-        application.status = OwnerApplication.Status.APPROVED
-        application.reviewed_at = timezone.now()
-        fields.extend(['status', 'reviewed_at'])
-    if fields:
-        application.save(update_fields=fields)
-    if not user.is_staff:
-        user.is_staff = True
-        user.save(update_fields=['is_staff'])
-
 def _auth_payload(user, token):
-    owner_status = (
+    owner_application = (
         OwnerApplication.objects
         .filter(user_id=user.id)
-        .values_list('status', flat=True)
+        .values('status', 'venue_name')
         .first()
     )
     return {
@@ -53,7 +40,8 @@ def _auth_payload(user, token):
         'user_uuid': str(_uuid_from_user(user)),
         'email': user.email,
         'role': _role_for_user(user),
-        'owner_status': owner_status,
+        'owner_status': owner_application['status'] if owner_application else None,
+        'owner_venue_name': owner_application['venue_name'] if owner_application else None,
     }
 
 @api_view(['POST'])
@@ -85,22 +73,55 @@ def owner_signup(request):
         return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
     if len(password) < 8:
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _rate_limit_check(request, action='owner_signup', identifier=email, limit=3, window_seconds=300):
+        return Response({'error': 'Too many owner registration attempts. Please try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
-    user = User.objects.create_user(username=email, email=email, password=password)
-    user.is_staff = True
-    user.save(update_fields=['is_staff'])
-    OwnerApplication.objects.create(
-        user=user,
-        venue_name=venue_name,
-        contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
-    )
-    token, _ = Token.objects.get_or_create(user=user)
+
+    # Prototype-only checkout: the client must complete the simulated payment step
+    # and submit the exact server-defined fee before an owner account is created.
+    owner_fee = Decimal('20.00')
+    payment_status = (request.data.get('payment_status') or '').strip().lower()
+    payment_channel = (request.data.get('payment_channel') or '').strip().lower()
+    payment_provider = (request.data.get('payment_provider') or '').strip()
+    try:
+        paid_amount = Decimal(str(request.data.get('amount', '0'))).quantize(Decimal('0.01'))
+    except (InvalidOperation, TypeError, ValueError):
+        return Response({'error': 'Invalid owner registration payment amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if payment_status != 'mock_paid' or not payment_channel or paid_amount != owner_fee:
+        return Response({
+            'error': 'Complete the $20.00 simulated owner registration payment before creating your account.',
+            'required_amount': str(owner_fee),
+            'payment_status': 'mock_pending',
+        }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(username=email, email=email, password=password)
+            user.is_staff = True
+            user.save(update_fields=['is_staff'])
+            OwnerApplication.objects.create(
+                user=user,
+                venue_name=venue_name,
+                contact_phone=phone,
+                status=OwnerApplication.Status.APPROVED,
+                reviewed_at=timezone.now(),
+            )
+            token, _ = Token.objects.get_or_create(user=user)
+    except IntegrityError:
+        return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
+
     return Response({
         **_auth_payload(user, token),
-        'message': 'Admin venue account created. You can now use the owner dashboard.',
+        'owner_payment': {
+            'status': 'mock_paid',
+            'amount': str(owner_fee),
+            'currency': 'USD',
+            'payment_channel': payment_channel,
+            'payment_provider': payment_provider,
+        },
+        'message': 'Owner account created. Simulated payment successful.',
     }, status=status.HTTP_201_CREATED)
 
 
@@ -122,7 +143,6 @@ def auth_login(request):
     if user is None:
         return Response({'error': 'invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    _ensure_owner_access(user)
     token, _ = Token.objects.get_or_create(user=user)
     return Response(_auth_payload(user, token))
 
@@ -150,6 +170,10 @@ def auth_me(request):
             'email': request.user.email,
             'role': _role_for_user(request.user),
             'owner_status': owner_status,
+            'owner_venue_name': (
+                OwnerApplication.objects.filter(user_id=request.user.id)
+                .values_list('venue_name', flat=True).first()
+            ),
         }
     )
 

@@ -1,6 +1,8 @@
 from decimal import Decimal
 import re
 
+from django.conf import settings
+
 from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -11,6 +13,7 @@ from rest_framework.response import Response
 
 from core.models import Booking, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
+from global_utils.common import _get_supabase_client
 from global_utils.view_helpers import (
     COUPON_ARCHIVE_RETENTION_DAYS,
     FACILITY_ARCHIVE_RETENTION_DAYS,
@@ -247,6 +250,7 @@ def owner_facility_detail_endpoint(request, facility_id):
         facility.description = (request.data.get('description') or '').strip()
         update_fields.append('description')
 
+    schedule_changed = False
     if 'opening_hours' in request.data:
         opening_hours = (request.data.get('opening_hours') or '').strip()
         if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d\s*-\s*(?:[01]\d|2[0-3]):[0-5]\d', opening_hours):
@@ -254,6 +258,7 @@ def owner_facility_detail_endpoint(request, facility_id):
         opening_time, closing_time = [value.strip() for value in opening_hours.split('-', 1)]
         if closing_time <= opening_time:
             return Response({'error': 'Closing time must be later than opening time.'}, status=status.HTTP_400_BAD_REQUEST)
+        schedule_changed = facility.opening_hours != opening_hours
         facility.opening_hours = opening_hours
         update_fields.append('opening_hours')
 
@@ -315,6 +320,23 @@ def owner_facility_detail_endpoint(request, facility_id):
     facility.owner_user_id = owner_uuid
     update_fields.append('owner_user_id')
     facility.save(update_fields=update_fields)
+
+    if schedule_changed:
+        # Remove only future slots with no bookings. Existing booked slots remain
+        # untouched, and the rolling generator fills the new schedule around them.
+        stale_slots = (
+            TimeSlot.objects.filter(facility=facility, start_at__gte=timezone.now())
+            .annotate(booking_count=models.Count('bookings'))
+            .filter(booking_count=0)
+        )
+        stale_ids = list(stale_slots.values_list('id', flat=True))
+        if stale_ids:
+            stale_slots.delete()
+            try:
+                _get_supabase_client().table(settings.SUPABASE_TIMESLOT_TABLE).delete().in_('id', stale_ids).execute()
+            except Exception:
+                pass
+
     return Response({'type': 'facility_updated', 'facility': FacilitySerializer(facility).data})
 
 

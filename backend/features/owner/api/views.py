@@ -134,6 +134,7 @@ def owner_facilities_endpoint(request):
     location_name = (request.data.get('location_name') or '').strip()
     description = (request.data.get('description') or '').strip()
     image_url = (request.data.get('image_url') or '').strip()
+    opening_hours = (request.data.get('opening_hours') or '').strip()
     is_indoor_raw = request.data.get('is_indoor', False)
     if isinstance(is_indoor_raw, bool):
         is_indoor = is_indoor_raw
@@ -150,6 +151,10 @@ def owner_facilities_endpoint(request):
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
     if not location_name:
         return Response({'error': 'location_name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not opening_hours:
+        return Response({'error': 'opening_hours is required (HH:MM - HH:MM)'}, status=status.HTTP_400_BAD_REQUEST)
+    if not __import__('re').fullmatch(r'(?:[01]\\d|2[0-3]):[0-5]\\d\\s*-\\s*(?:[01]\\d|2[0-3]):[0-5]\\d', opening_hours):
+        return Response({'error': 'opening_hours must use HH:MM - HH:MM (24-hour time)'}, status=status.HTTP_400_BAD_REQUEST)
     if sport_type not in SportType.values:
         return Response({'error': f'sport_type must be one of: {", ".join(SportType.values)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -176,6 +181,7 @@ def owner_facilities_endpoint(request):
         longitude=longitude,
         base_price_per_hour=base_price_per_hour,
         image_url=image_url,
+        opening_hours=opening_hours,
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,
         archived_at=None,

@@ -43,6 +43,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
   bool _indoorOnly = false;
   String? _sportType;
   String? _selectedFacilityId;
+  int _selectedCourtNumber = 1;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
   int _slotPage = 1;
@@ -350,6 +351,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 _sportType = null;
                 _indoorOnly = false;
                 _selectedFacilityId = null;
+                _selectedCourtNumber = 1;
                 _selectedSlotIds.clear();
                 _slotPage = 1;
               });
@@ -411,20 +413,26 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
-            final validSlotIds = selectedFacilityRows
+            final courtNumbers = selectedFacilityRows.map((e) => e.courtNumber).toSet().toList()..sort();
+            final selectedCourtNumber = courtNumbers.contains(_selectedCourtNumber)
+                ? _selectedCourtNumber
+                : (courtNumbers.isEmpty ? 1 : courtNumbers.first);
+            final selectedCourtRows = selectedFacilityRows.where((row) => row.courtNumber == selectedCourtNumber).toList();
+
+            final validSlotIds = selectedCourtRows
                 .map((e) => e.slotId)
                 .toSet();
             final effectiveSelectedIds = _selectedSlotIds
                 .where(validSlotIds.contains)
                 .where(
-                  (id) => selectedFacilityRows.any(
+                  (id) => selectedCourtRows.any(
                     (row) => row.slotId == id && row.isAvailable,
                   ),
                 )
                 .toSet();
 
             final selectedSlots =
-                selectedFacilityRows
+                selectedCourtRows
                     .where((row) => effectiveSelectedIds.contains(row.slotId))
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
@@ -518,6 +526,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                               setState(() {
                                 _sportType = sport;
                                 _selectedFacilityId = null;
+                                _selectedCourtNumber = 1;
                                 _selectedSlotIds.clear();
                               });
                             },
@@ -569,6 +578,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                           setState(() {
                             _selectedDate = DateTime(d.year, d.month, d.day);
                             _selectedFacilityId = null;
+                            _selectedCourtNumber = 1;
                             _selectedSlotIds.clear();
                           });
                         },
@@ -577,41 +587,51 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                _SectionTitle(title: resourceTitle, tiny: tiny),
+                _SectionTitle(title: 'Select Venue', tiny: tiny),
                 const SizedBox(height: 10),
                 if (facilities.isEmpty)
-                  const Text('No fields/tables available for this date.')
+                  const Text('No venues available for this date.')
+                else
+                  DropdownButtonFormField<String>(
+                    value: selectedFacilityId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    items: facilities.map((row) => DropdownMenuItem<String>(
+                      value: row.facilityId,
+                      child: Text(row.facilityName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (value) => setState(() {
+                      _selectedFacilityId = value;
+                      _selectedCourtNumber = 1;
+                      _selectedSlotIds.clear();
+                    }),
+                  ),
+                const SizedBox(height: 16),
+                _SectionTitle(title: resourceTitle, tiny: tiny),
+                const SizedBox(height: 10),
+                if (courtNumbers.isEmpty)
+                  const Text('No fields configured for this venue.')
                 else
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
-                    children: facilities.map((facilityRow) {
-                      final selected =
-                          facilityRow.facilityId == selectedFacilityId;
-                      return ChoiceChip(
-                        label: Text(facilityRow.facilityName),
-                        selected: selected,
-                        showCheckmark: false,
-                        selectedColor: const Color(0xFF111827),
-                        labelStyle: TextStyle(
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF4B5563),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        onSelected: (_) {
-                          setState(() {
-                            _selectedFacilityId = facilityRow.facilityId;
-                            _selectedSlotIds.clear();
-                          });
-                        },
-                      );
-                    }).toList(),
+                    children: courtNumbers.map((number) => ChoiceChip(
+                      label: Text('${isBilliard ? 'Table' : 'Field'} $number'),
+                      selected: number == selectedCourtNumber,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() {
+                        _selectedCourtNumber = number;
+                        _selectedSlotIds.clear();
+                      }),
+                    )).toList(),
                   ),
                 const SizedBox(height: 18),
                 _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),
                 const SizedBox(height: 10),
-                if (selectedFacilityRows.isEmpty)
+                if (selectedCourtRows.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Text(
@@ -628,7 +648,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       return GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: selectedFacilityRows.length,
+                        itemCount: selectedCourtRows.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
                           crossAxisSpacing: 10,
@@ -636,7 +656,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                           childAspectRatio: compact ? 2.4 : 2.7,
                         ),
                         itemBuilder: (context, index) {
-                          final slot = selectedFacilityRows[index];
+                          final slot = selectedCourtRows[index];
                           final isPast = slot.startAt.isBefore(now);
                           final selected = effectiveSelectedIds.contains(
                             slot.slotId,

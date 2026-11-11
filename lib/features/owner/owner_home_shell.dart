@@ -1157,6 +1157,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: (ownerProfile['contact_phone'] as String?) ?? '',
     );
     final openingHoursCtrl = TextEditingController();
+    final courtCountCtrl = TextEditingController(text: '1');
     List<XFile> selectedVenueImages = [];
     LatLng selectedLocation = const LatLng(11.5564, 104.9282);
     bool locationPicked = false;
@@ -1198,6 +1199,15 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                       decoration: const InputDecoration(
                         labelText: 'Opening hours (e.g. 08:00-22:00)',
                         helperText: 'Use 24-hour time. This creates the bookable hourly slots.',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: courtCountCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Number of fields / courts',
+                        helperText: 'Customers will choose Field 1, Field 2, etc.',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1329,10 +1339,12 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     }
 
     final parsedPrice = double.tryParse(priceCtrl.text.trim());
+    final parsedCourtCount = int.tryParse(courtCountCtrl.text.trim());
     if (nameCtrl.text.trim().isEmpty ||
         locationCtrl.text.trim().isEmpty ||
         parsedPrice == null ||
         parsedPrice <= 0 ||
+        parsedCourtCount == null || parsedCourtCount < 1 || parsedCourtCount > 100 ||
         openingHoursCtrl.text.trim().isEmpty ||
         !locationPicked) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1382,6 +1394,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         'description': descriptionCtrl.text.trim(),
         'contact_phone': phoneCtrl.text.trim(),
         'opening_hours': openingHoursCtrl.text.trim(),
+        'court_count': parsedCourtCount,
         'latitude': selectedLocation.latitude,
         'longitude': selectedLocation.longitude,
         'is_indoor': isIndoor,

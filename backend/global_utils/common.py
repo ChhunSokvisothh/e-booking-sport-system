@@ -173,6 +173,7 @@ def _sync_generated_slots_to_supabase_async(slots):
                     'facility_id': int(slot.facility_id),
                     'start_at': slot.start_at.isoformat(),
                     'end_at': slot.end_at.isoformat(),
+                    'court_number': int(slot.court_number),
                     'max_bookings': int(slot.max_bookings),
                     'current_bookings': int(slot.current_bookings),
                     'is_open': bool(slot.is_open),

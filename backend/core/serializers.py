@@ -46,6 +46,7 @@ class TimeSlotSerializer(serializers.ModelSerializer):
             'facility',
             'start_at',
             'end_at',
+            'court_number',
             'max_bookings',
             'current_bookings',
             'is_open',

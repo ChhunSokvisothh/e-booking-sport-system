@@ -103,6 +103,7 @@ def _ensure_rolling_slot_window():
                         'end_time': next_cursor.timetz().replace(tzinfo=None),
                         'duration': timedelta(hours=1),
                         'max_bookings': int(slot.max_bookings or 1),
+                        'court_number': int(slot.court_number or 1),
                     }
                 )
                 cursor = next_cursor
@@ -128,15 +129,18 @@ def _ensure_rolling_slot_window():
                 opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
                 cursor = datetime.combine(window_start.date(), opening_start)
                 closing = datetime.combine(window_start.date(), opening_end)
-                while cursor + timedelta(hours=1) <= closing:
-                    next_cursor = cursor + timedelta(hours=1)
-                    templates.append({
-                        'start_time': cursor.time(),
-                        'end_time': next_cursor.time(),
-                        'duration': timedelta(hours=1),
-                        'max_bookings': 1,
-                    })
-                    cursor = next_cursor
+                for court_number in range(1, max(1, int(facility.court_count or 1)) + 1):
+                    cursor = datetime.combine(window_start.date(), opening_start)
+                    while cursor + timedelta(hours=1) <= closing:
+                        next_cursor = cursor + timedelta(hours=1)
+                        templates.append({
+                            'start_time': cursor.time(),
+                            'end_time': next_cursor.time(),
+                            'duration': timedelta(hours=1),
+                            'max_bookings': 1,
+                            'court_number': court_number,
+                        })
+                        cursor = next_cursor
             except (ValueError, TypeError):
                 # Invalid hours must not create misleading bookable slots.
                 templates = []
@@ -187,10 +191,12 @@ def _ensure_rolling_slot_window():
                         facility=facility,
                         start_at=cursor,
                         end_at=cursor + timedelta(hours=1),
+                        court_number=slot.court_number,
                         max_bookings=slot.max_bookings,
                         current_bookings=0,
                         is_open=True,
                         reservation_hold_until=None,
+                        court_number=slot.court_number,
                     )
                 )
                 cursor = cursor + timedelta(hours=1)
@@ -216,6 +222,7 @@ def _ensure_rolling_slot_window():
                 slot.start_at.astimezone(local_tz).date(),
                 slot.start_at.astimezone(local_tz).time().replace(tzinfo=None),
                 slot.end_at.astimezone(local_tz).time().replace(tzinfo=None),
+                slot.court_number,
             )
             for slot in TimeSlot.objects.filter(
                 facility=facility,
@@ -228,7 +235,7 @@ def _ensure_rolling_slot_window():
         for day_offset in range(BOOKING_WINDOW_DAYS + 1):
             target_date = (window_start + timedelta(days=day_offset)).date()
             for template in templates:
-                slot_key = (target_date, template['start_time'], template['end_time'])
+                slot_key = (target_date, template['start_time'], template['end_time'], template.get('court_number', 1))
                 if slot_key in existing_slot_keys:
                     continue
                 start_dt = timezone.make_aware(datetime.combine(target_date, template['start_time']))
@@ -245,6 +252,7 @@ def _ensure_rolling_slot_window():
                         current_bookings=0,
                         is_open=True,
                         reservation_hold_until=None,
+                        court_number=template.get('court_number', 1),
                     )
                 )
 

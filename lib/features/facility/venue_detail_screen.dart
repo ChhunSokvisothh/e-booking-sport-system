@@ -382,6 +382,25 @@ class VenueDetailScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                if (hasCoordinates) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _openVenueDirections(context),
+                      icon: const Icon(Icons.directions_rounded),
+                      label: const Text('Get directions'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _ink,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -390,6 +409,32 @@ class VenueDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openVenueDirections(BuildContext context) async {
+    final destination = '${facility.latitude},${facility.longitude}';
+    final mapsUri = Uri.https(
+      'www.google.com',
+      '/maps/dir/',
+      {
+        'api': '1',
+        'destination': destination,
+        'travelmode': 'driving',
+      },
+    );
+
+    final opened = await launchUrl(
+      mapsUri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open a maps app on this device.'),
+        ),
+      );
+    }
   }
 
   Widget _buildDetailsCard({

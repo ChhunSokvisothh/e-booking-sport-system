@@ -24,6 +24,7 @@ from core.models import (
     TelegramIdentity,
     TelegramLoginAttempt,
     TelegramLinkAttempt,
+    OwnerApplication,
 )
 from global_utils.view_helpers import _role_for_user, _uuid_from_user
 

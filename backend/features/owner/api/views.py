@@ -329,6 +329,13 @@ def owner_facility_detail_endpoint(request, facility_id):
     update_fields.append('owner_user_id')
     facility.save(update_fields=update_fields)
     if 'opening_hours' in update_fields:
+        # Rebuild future unbooked slots from the new opening hours. Never touch booked slots.
+        stale_slots = (
+            TimeSlot.objects.filter(facility=facility, start_at__gte=timezone.now())
+            .annotate(booking_count=models.Count('bookings'))
+            .filter(booking_count=0)
+        )
+        stale_slots.delete()
         cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_updated', 'facility': FacilitySerializer(facility).data})
 

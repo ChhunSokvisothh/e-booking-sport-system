@@ -247,7 +247,7 @@ def _ensure_rolling_slot_window():
                 )
 
         if created_slots:
-            TimeSlot.objects.bulk_create(created_slots, ignore_conflicts=True)
+            TimeSlot.objects.bulk_create(created_slots)
             _sync_generated_slots_to_supabase_async(created_slots)
 
 

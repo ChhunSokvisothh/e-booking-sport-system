@@ -72,15 +72,12 @@ def _is_owner_user(user):
         return False
     if user.is_superuser:
         return True
-    # Keep legacy staff-created owners working while new owners use the paid
-    # OwnerApplication record instead of Django's admin-staff privilege.
-    return bool(
-        user.is_staff
-        or OwnerApplication.objects.filter(
-            user_id=user.id,
-            status=OwnerApplication.Status.APPROVED,
-        ).exists()
-    )
+    application = OwnerApplication.objects.filter(user_id=user.id).only('status').first()
+    if application is not None:
+        return application.status == OwnerApplication.Status.APPROVED
+    # Backward compatibility for legacy owner accounts created before owner
+    # registration records existed. New owner signups never receive is_staff.
+    return bool(user.is_staff)
 
 def _request_ip(request):
     forwarded = request.META.get('HTTP_X_FORWARDED_FOR')

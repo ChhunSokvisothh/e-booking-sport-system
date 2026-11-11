@@ -146,8 +146,8 @@ def owner_facilities_endpoint(request):
         is_indoor = bool(is_indoor_raw)
 
     base_price_raw = request.data.get('base_price_per_hour')
-    latitude_raw = request.data.get('latitude', 11.5564)
-    longitude_raw = request.data.get('longitude', 104.9282)
+    latitude_raw = request.data.get('latitude')
+    longitude_raw = request.data.get('longitude')
 
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -159,7 +159,9 @@ def owner_facilities_endpoint(request):
         opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
         opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
         opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
-        if opening_end <= opening_start:
+        start_minutes = opening_start.hour * 60 + opening_start.minute
+        end_minutes = opening_end.hour * 60 + opening_end.minute
+        if end_minutes - start_minutes < 60:
             raise ValueError
     except (ValueError, TypeError):
         return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
@@ -263,7 +265,9 @@ def owner_facility_detail_endpoint(request, facility_id):
             opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
             opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
             opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
-            if opening_end <= opening_start:
+            start_minutes = opening_start.hour * 60 + opening_start.minute
+            end_minutes = opening_end.hour * 60 + opening_end.minute
+            if end_minutes - start_minutes < 60:
                 raise ValueError
         except (ValueError, TypeError):
             return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
@@ -313,6 +317,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.latitude = float(request.data.get('latitude'))
         except Exception:
             return Response({'error': 'latitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -90 <= facility.latitude <= 90:
+            return Response({'error': 'latitude must be between -90 and 90'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('latitude')
 
     if 'longitude' in request.data:
@@ -320,6 +326,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.longitude = float(request.data.get('longitude'))
         except Exception:
             return Response({'error': 'longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -180 <= facility.longitude <= 180:
+            return Response({'error': 'longitude must be between -180 and 180'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('longitude')
 
     if len(update_fields) == 1:
@@ -329,6 +337,13 @@ def owner_facility_detail_endpoint(request, facility_id):
     update_fields.append('owner_user_id')
     facility.save(update_fields=update_fields)
     if 'opening_hours' in update_fields:
+        # Rebuild future unbooked slots from the new opening hours. Never touch booked slots.
+        stale_slots = (
+            TimeSlot.objects.filter(facility=facility, start_at__gte=timezone.now())
+            .annotate(booking_count=models.Count('bookings'))
+            .filter(booking_count=0)
+        )
+        stale_slots.delete()
         cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_updated', 'facility': FacilitySerializer(facility).data})
 
@@ -452,6 +467,11 @@ def owner_coupon_detail_endpoint(request, coupon_id):
         coupon.is_active = is_active
         update_fields = ['is_active', 'updated_at']
         if is_active:
+            if coupon.ends_at <= now:
+                return Response(
+                    {'error': 'This coupon has expired. Create a new coupon with a future end date.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if coupon.starts_at > now:
                 coupon.starts_at = now
                 update_fields.append('starts_at')

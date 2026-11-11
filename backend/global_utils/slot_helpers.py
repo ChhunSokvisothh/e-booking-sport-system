@@ -119,8 +119,9 @@ def _ensure_rolling_slot_window():
                     'max_bookings': 3,
                 })
 
-        if not templates and facility.opening_hours:
-            # New venues define their own hours instead of inheriting demo slot times.
+        if facility.owner_user_id is not None and facility.opening_hours:
+            # Owner-managed venues always use their declared hours as the source of truth.
+            templates = []
             try:
                 opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
                 opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
@@ -210,18 +211,26 @@ def _ensure_rolling_slot_window():
         if not templates:
             continue
 
-        existing_dates = {
-            slot.start_at.astimezone(timezone.get_current_timezone()).date()
-            for slot in TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
+        existing_slot_keys = {
+            (
+                slot.start_at.astimezone(local_tz).date(),
+                slot.start_at.astimezone(local_tz).time().replace(tzinfo=None),
+                slot.end_at.astimezone(local_tz).time().replace(tzinfo=None),
+            )
+            for slot in TimeSlot.objects.filter(
+                facility=facility,
+                start_at__gte=window_start,
+                start_at__lt=window_end,
+            )
         }
 
         created_slots = []
         for day_offset in range(BOOKING_WINDOW_DAYS + 1):
             target_date = (window_start + timedelta(days=day_offset)).date()
-            if target_date in existing_dates:
-                continue
-
             for template in templates:
+                slot_key = (target_date, template['start_time'], template['end_time'])
+                if slot_key in existing_slot_keys:
+                    continue
                 start_dt = timezone.make_aware(datetime.combine(target_date, template['start_time']))
                 end_dt = timezone.make_aware(datetime.combine(target_date, template['end_time']))
                 if end_dt <= start_dt:

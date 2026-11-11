@@ -1050,16 +1050,20 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider);
   }
 
-  Future<LatLng?> _pickVenueLocation(LatLng initialLocation) {
+  Future<LatLng?> _pickVenueLocation(
+    LatLng initialLocation, {
+    bool requireTap = false,
+  }) {
     LatLng selected = initialLocation;
+    bool hasSelection = !requireTap;
     return showDialog<LatLng>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Pin your venue location'),
           content: SizedBox(
-            width: 560,
-            height: 380,
+            width: MediaQuery.sizeOf(context).width * 0.72,
+            height: 340,
             child: Column(
               children: [
                 const Text('Tap the map to place or move the venue pin.'),
@@ -1069,28 +1073,33 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     options: MapOptions(
                       initialCenter: initialLocation,
                       initialZoom: 14,
-                      onTap: (_, point) => setDialogState(() => selected = point),
+                      onTap: (_, point) => setDialogState(() {
+                        selected = point;
+                        hasSelection = true;
+                      }),
                     ),
                     children: [
                       TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.ebookingsport.app',
+                        userAgentPackageName: 'com.example.my_project',
                       ),
                       MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: selected,
-                            width: 44,
-                            height: 44,
-                            child: const Icon(
-                              Icons.location_pin,
-                              size: 42,
-                              color: Color(0xFFE11D48),
-                            ),
-                          ),
-                        ],
+                        markers: hasSelection
+                            ? [
+                                Marker(
+                                  point: selected,
+                                  width: 44,
+                                  height: 44,
+                                  child: const Icon(
+                                    Icons.location_pin,
+                                    size: 42,
+                                    color: Color(0xFFE11D48),
+                                  ),
+                                ),
+                              ]
+                            : const [],
                       ),
-                      const RichAttributionWidget(
+                      RichAttributionWidget(
                         attributions: [TextSourceAttribution('OpenStreetMap contributors')],
                       ),
                     ],
@@ -1098,7 +1107,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}',
+                  hasSelection
+                      ? 'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}'
+                      : 'Tap the map to choose a location',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1110,7 +1121,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(selected),
+              onPressed: hasSelection
+                  ? () => Navigator.of(dialogContext).pop(selected)
+                  : null,
               child: const Text('Use this location'),
             ),
           ],
@@ -1147,6 +1160,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     );
     final openingHoursCtrl = TextEditingController();
     LatLng selectedLocation = const LatLng(11.5564, 104.9282);
+    bool locationPicked = false;
     bool isIndoor = false;
     String sportType = _sportTypes.first;
 
@@ -1226,9 +1240,12 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: () async {
-                        final picked = await _pickVenueLocation(selectedLocation);
+                        final picked = await _pickVenueLocation(selectedLocation, requireTap: true);
                         if (picked != null) {
-                          setDialogState(() => selectedLocation = picked);
+                          setDialogState(() {
+                            selectedLocation = picked;
+                            locationPicked = true;
+                          });
                         }
                       },
                       icon: const Icon(Icons.map_outlined),

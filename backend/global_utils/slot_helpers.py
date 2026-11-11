@@ -107,6 +107,18 @@ def _ensure_rolling_slot_window():
                 )
                 cursor = next_cursor
 
+        if not templates and not facility.opening_hours and facility.owner_user_id is None:
+            # Preserve the legacy timetable for unowned seed venues only.
+            for hour in [8, 10, 12, 14, 16, 18, 20]:
+                start_time = datetime.strptime(f'{hour:02d}:00', '%H:%M').time()
+                end_time = datetime.strptime(f'{hour + 2:02d}:00', '%H:%M').time()
+                templates.append({
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': timedelta(hours=2),
+                    'max_bookings': 3,
+                })
+
         if not templates and facility.opening_hours:
             # New venues define their own hours instead of inheriting demo slot times.
             try:

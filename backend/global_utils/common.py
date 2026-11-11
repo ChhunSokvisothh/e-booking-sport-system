@@ -21,7 +21,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from supabase import Client, create_client
 
-from core.models import Booking, BookingSource, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
+from core.models import Booking, BookingSource, BookingStatus, Coupon, Facility, OwnerApplication, PaymentStatus, SportType, TimeSlot
 from core.serializers import BookingSerializer, CouponSerializer, FacilitySerializer, TimeSlotSerializer
 
 User = get_user_model()
@@ -61,10 +61,26 @@ def _facility_is_within_owner_retention(facility, now=None):
     return facility.archived_at >= _facility_archive_cutoff(now)
 
 def _role_for_user(user):
-    return 'owner' if (user.is_staff or user.is_superuser) else 'user'
+    if not user or not user.is_authenticated:
+        return 'user'
+    if user.is_superuser:
+        return 'admin'
+    return 'owner' if _is_owner_user(user) else 'user'
 
 def _is_owner_user(user):
-    return bool(user and (user.is_staff or user.is_superuser))
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    # Keep legacy staff-created owners working while new owners use the paid
+    # OwnerApplication record instead of Django's admin-staff privilege.
+    return bool(
+        user.is_staff
+        or OwnerApplication.objects.filter(
+            user_id=user.id,
+            status=OwnerApplication.Status.APPROVED,
+        ).exists()
+    )
 
 def _request_ip(request):
     forwarded = request.META.get('HTTP_X_FORWARDED_FOR')

@@ -107,9 +107,10 @@ def _ensure_rolling_slot_window():
                 )
                 cursor = next_cursor
 
-        if not templates and facility.opening_hours:
-            # New owner-created venues define their own operating window.
-            # Never invent generic 08:00-22:00 slots for a venue with no schedule.
+        if facility.opening_hours:
+            # Owner-defined operating hours take precedence over old generated slots,
+            # so changing the schedule changes the rolling availability template.
+            templates = []
             try:
                 opening_raw, closing_raw = [
                     value.strip()

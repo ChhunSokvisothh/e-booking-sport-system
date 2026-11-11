@@ -48,6 +48,7 @@ def _slot_payload(
         'facility_id': str(facility.id),
         'facility_name': facility.name,
         'sport_type': facility.sport_type,
+        'court_number': court_number,
         'start_at': start_at,
         'end_at': end_at,
         'current_bookings': current_bookings,

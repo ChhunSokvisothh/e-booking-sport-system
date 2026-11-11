@@ -536,9 +536,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         venueName: facility.name,
       );
       final range = map[facility.id.toString()];
-      final openHours = range == null
-          ? (facility.openingHours.isNotEmpty ? facility.openingHours : 'Hours not set')
-          : '${DateFormat('HH:mm').format(range.openAt)}-${DateFormat('HH:mm').format(range.closeAt)}';
+      final openHours = facility.openingHours.isNotEmpty
+          ? facility.openingHours
+          : range == null
+              ? 'Hours not set'
+              : '${DateFormat('HH:mm').format(range.openAt)}-${DateFormat('HH:mm').format(range.closeAt)}';
       final rating = facility.rating.clamp(0.0, 5.0);
 
       return _VenueView(

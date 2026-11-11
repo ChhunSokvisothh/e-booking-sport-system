@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -199,6 +200,8 @@ class Booking(models.Model):
     chatbot_session_id = models.CharField(max_length=64, blank=True)
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     refunded_at = models.DateTimeField(null=True, blank=True)
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    checked_in_by = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='booking_checkins')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

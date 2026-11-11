@@ -15,7 +15,6 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
-from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -266,7 +265,8 @@ def deliver_paid_bookings_invoice(booking_ids):
         ]
         for b in bookings:
             start, end = timezone.localtime(b.start_at), timezone.localtime(b.end_at)
-            lines.append(f'• {start:%d %b %Y} {start:%H:%M}–{end:%H:%M} (Field {b.time_slot.court_number}) — USD {b.final_price:.2f}')
+            court_label = 'Table' if b.facility.sport_type == 'billiard' else 'Field'
+            lines.append(f'• {start:%d %b %Y} {start:%H:%M}–{end:%H:%M} ({court_label} {b.time_slot.court_number}) — USD {b.final_price:.2f}')
         lines.append(f'<b>Total paid: USD {total:.2f}</b>')
         base = f'https://api.telegram.org/bot{token}'
         try:

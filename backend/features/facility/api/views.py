@@ -109,6 +109,7 @@ def live_slots_endpoint(request):
     _ensure_rolling_slot_window_cached()
 
     sport_type = (request.query_params.get('sport_type') or '').strip().lower()
+    facility_id = (request.query_params.get('facility_id') or '').strip()
     date_str = (request.query_params.get('date') or '').strip()
     is_indoor_raw = request.query_params.get('is_indoor')
     requested_date, day_start, day_end = _date_bounds_for_query(date_str)
@@ -147,15 +148,45 @@ def live_slots_endpoint(request):
         'reservation_hold_until', 'slot_version',
         'facility__id', 'facility__name', 'facility__sport_type',
         'facility__base_price_per_hour', 'facility__is_indoor',
-        'facility__location_name',
+        'facility__location_name', 'facility__opening_hours',
     )
 
-    total_count = slots_qs.count()
-    slots = list(
-        slots_qs.order_by('start_at', 'id')[
-            (page - 1) * page_size : page * page_size
-        ]
-    )
+    # The client sends facility_id when a user selects a venue. Honour it here;
+    # otherwise slots from other venues can leak into the selected venue's list.
+    if facility_id:
+        slots_qs = slots_qs.filter(facility_id=facility_id)
+
+    # Opening hours are enforced by the API as well as by slot generation. This
+    # prevents stale rows or another worker's outdated slots being bookable.
+    candidates = list(slots_qs.order_by('start_at', 'id'))
+    valid_slots = []
+    local_tz = timezone.get_current_timezone()
+    for slot in candidates:
+        configured_hours = (slot.facility.opening_hours or '').strip()
+        if configured_hours:
+            try:
+                opening_raw, closing_raw = configured_hours.split('-', 1)
+                opening_time = datetime.strptime(opening_raw.strip(), '%H:%M').time()
+                closing_time = datetime.strptime(closing_raw.strip(), '%H:%M').time()
+                local_start = timezone.localtime(slot.start_at, local_tz)
+                local_end = timezone.localtime(slot.end_at, local_tz)
+                start_time = local_start.time().replace(tzinfo=None)
+                end_time = local_end.time().replace(tzinfo=None)
+                if (
+                    local_start.date() != local_end.date()
+                    or start_time < opening_time
+                    or end_time > closing_time
+                    or end_time <= start_time
+                ):
+                    continue
+            except (ValueError, TypeError):
+                # Invalid opening hours must not expose potentially invalid slots.
+                continue
+        valid_slots.append(slot)
+
+    total_count = len(valid_slots)
+    start_index = (page - 1) * page_size
+    slots = valid_slots[start_index : start_index + page_size]
     booked_slot_ids = _booked_slot_ids_for_user(request)
 
     output = []

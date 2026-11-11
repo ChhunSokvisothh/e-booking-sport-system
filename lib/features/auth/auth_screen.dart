@@ -44,7 +44,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   Future<String?> _showOwnerPaymentDialog() async {
-    String provider = 'ABA Pay';
+    String provider = 'Bakong QR';
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -67,16 +67,37 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               const Text('Choose a payment method'),
               RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
-                value: 'ABA Pay',
+                value: 'Bakong QR',
                 groupValue: provider,
-                title: const Text('ABA Pay / KHQR'),
+                title: const Text('Bakong QR'),
                 onChanged: (value) => setDialogState(() => provider = value!),
               ),
               RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
-                value: 'ACLEDA',
+                value: 'ABA Bank',
                 groupValue: provider,
-                title: const Text('ACLEDA'),
+                title: const Text('ABA Bank'),
+                onChanged: (value) => setDialogState(() => provider = value!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'Visa',
+                groupValue: provider,
+                title: const Text('Visa'),
+                onChanged: (value) => setDialogState(() => provider = value!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'Mastercard',
+                groupValue: provider,
+                title: const Text('Mastercard'),
+                onChanged: (value) => setDialogState(() => provider = value!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'PayPal',
+                groupValue: provider,
+                title: const Text('PayPal'),
                 onChanged: (value) => setDialogState(() => provider = value!),
               ),
               Container(
@@ -132,7 +153,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             password: _passwordCtrl.text.trim(),
             venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
-            paymentChannel: 'mobile_banking',
+            paymentChannel: ['Visa', 'Mastercard'].contains(ownerPaymentProvider)
+                ? 'card'
+                : ownerPaymentProvider == 'PayPal'
+                    ? 'international_bank'
+                    : 'local_bank',
             paymentProvider: ownerPaymentProvider!,
           );
         } else {

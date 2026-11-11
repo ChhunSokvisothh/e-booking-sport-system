@@ -179,9 +179,12 @@ class ExploreScreen extends ConsumerWidget {
                                   const SizedBox(height: 12),
                                   Row(
                                     children: [
-                                      const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 18),
-                                      const SizedBox(width: 4),
-                                      Text(facility.rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w800)),
+                                      if (facility.rating > 0) ...[
+                                        const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 18),
+                                        const SizedBox(width: 4),
+                                        Text(facility.rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w800)),
+                                      ] else
+                                        const Text('New · Not rated', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
                                       const Spacer(),
                                       Text(
                                         '\$${facility.basePricePerHour.toStringAsFixed(0)}/hr',

@@ -303,15 +303,19 @@ def owner_facility_detail_endpoint(request, facility_id):
     if 'latitude' in request.data:
         try:
             facility.latitude = float(request.data.get('latitude'))
+            if not -90 <= facility.latitude <= 90:
+                raise ValueError('latitude out of range')
         except Exception:
-            return Response({'error': 'latitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'latitude must be between -90 and 90'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('latitude')
 
     if 'longitude' in request.data:
         try:
             facility.longitude = float(request.data.get('longitude'))
+            if not -180 <= facility.longitude <= 180:
+                raise ValueError('longitude out of range')
         except Exception:
-            return Response({'error': 'longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'longitude must be between -180 and 180'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('longitude')
 
     if len(update_fields) == 1:

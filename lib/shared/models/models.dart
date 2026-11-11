@@ -379,6 +379,7 @@ class DashboardUpcomingSlot {
     required this.slotId,
     required this.facilityId,
     required this.facilityName,
+    this.courtNumber = 1,
     required this.sportType,
     required this.isIndoor,
     required this.startAt,
@@ -391,6 +392,7 @@ class DashboardUpcomingSlot {
   final int slotId;
   final int facilityId;
   final String facilityName;
+  final int courtNumber;
   final String sportType;
   final bool isIndoor;
   final DateTime startAt;

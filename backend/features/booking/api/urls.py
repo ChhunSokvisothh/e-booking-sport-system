@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from features.booking.api.views import (
     BookingViewSet,
+    owner_checkin_endpoint,
     cancel_booking_endpoint,
     dashboard_summary_endpoint,
     mock_payment_endpoint,
@@ -15,6 +16,7 @@ router = DefaultRouter()
 router.register(r'bookings', BookingViewSet, basename='booking')
 
 urlpatterns = [
+    path('api/bookings/check-in/', owner_checkin_endpoint, name='owner-booking-checkin'),
     path('api/dashboard/summary/', dashboard_summary_endpoint, name='dashboard-summary'),
     path('api/mock-payment/', mock_payment_endpoint, name='mock-payment-endpoint'),
     path('api/public/invoice/<str:token>/', public_booking_invoice, name='public-booking-invoice'),

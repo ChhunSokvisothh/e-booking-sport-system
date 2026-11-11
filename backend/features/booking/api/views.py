@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
+from core.models import Booking, BookingSource, BookingStatus, Coupon, Facility, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
 from features.booking.api.telegram_invoices import deliver_paid_booking_invoice, retry_telegram_invoice
 from global_utils.view_helpers import (
@@ -350,6 +350,9 @@ def mock_payment_endpoint(request):
             ).first()
             if coupon is None:
                 return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+            venue_owner_id = Facility.objects.filter(pk=facility_id).values_list('owner_user_id', flat=True).first()
+            if coupon.owner_user_id is not None and coupon.owner_user_id != venue_owner_id:
+                return Response({'error': 'This coupon is not valid for the selected venue.'}, status=status.HTTP_400_BAD_REQUEST)
             discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
 
         expected_payable_amount = (expected_quote_amount * (Decimal('1.00') - discount_ratio)).quantize(Decimal('0.01'))
@@ -464,7 +467,7 @@ def mock_payment_endpoint(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot'))
+    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot', 'facility'))
     if len(bookings) != len(normalized_ids):
         return Response({'error': 'one or more bookings not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -485,6 +488,9 @@ def mock_payment_endpoint(request):
         ).first()
         if coupon is None:
             return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+        booking_owner_ids = {booking.facility.owner_user_id for booking in bookings}
+        if coupon.owner_user_id is not None and booking_owner_ids != {coupon.owner_user_id}:
+            return Response({'error': 'This coupon is not valid for the selected venue.'}, status=status.HTTP_400_BAD_REQUEST)
         discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
         applied_coupon_code = coupon.code
 

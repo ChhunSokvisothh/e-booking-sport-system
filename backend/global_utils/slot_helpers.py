@@ -107,19 +107,26 @@ def _ensure_rolling_slot_window():
                 )
                 cursor = next_cursor
 
-        if not templates:
-            # Fallback timetable when no seed data exists for a facility.
-            for hour in [8, 10, 12, 14, 16, 18, 20]:
-                start_time = datetime.strptime(f'{hour:02d}:00', '%H:%M').time()
-                end_time = datetime.strptime(f'{hour + 2:02d}:00', '%H:%M').time()
-                templates.append(
-                    {
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration': timedelta(hours=2),
-                        'max_bookings': 3,
-                    }
-                )
+        if not templates and facility.opening_hours:
+            # New venues define their own hours instead of inheriting demo slot times.
+            try:
+                opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
+                opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+                opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+                cursor = datetime.combine(window_start.date(), opening_start)
+                closing = datetime.combine(window_start.date(), opening_end)
+                while cursor + timedelta(hours=1) <= closing:
+                    next_cursor = cursor + timedelta(hours=1)
+                    templates.append({
+                        'start_time': cursor.time(),
+                        'end_time': next_cursor.time(),
+                        'duration': timedelta(hours=1),
+                        'max_bookings': 1,
+                    })
+                    cursor = next_cursor
+            except (ValueError, TypeError):
+                # Invalid hours must not create misleading bookable slots.
+                templates = []
 
         template_map[facility.id] = templates
 

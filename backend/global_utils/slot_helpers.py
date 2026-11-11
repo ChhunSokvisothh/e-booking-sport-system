@@ -119,8 +119,9 @@ def _ensure_rolling_slot_window():
                     'max_bookings': 3,
                 })
 
-        if not templates and facility.opening_hours:
-            # New venues define their own hours instead of inheriting demo slot times.
+        if facility.owner_user_id is not None and facility.opening_hours:
+            # Owner-managed venues always use their declared hours as the source of truth.
+            templates = []
             try:
                 opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
                 opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()

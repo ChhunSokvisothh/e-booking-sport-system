@@ -1242,7 +1242,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 if (nameCtrl.text.trim().isEmpty ||
                     locationCtrl.text.trim().isEmpty ||
                     priceCtrl.text.trim().isEmpty ||
-                    !RegExp(r'^([01]\d|2[0-3]):[0-5]\d\s*-\s*([01]\d|2[0-3]):[0-5]\d
+                    !RegExp(r'^([01]\d|2[0-3]):[0-5]\d\s*-\s*([01]\d|2[0-3]):[0-5]\d$').hasMatch(hoursCtrl.text.trim()) ||
                     selectedLocation == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Enter all required details, valid opening hours (HH:MM - HH:MM), and select the map location.')),

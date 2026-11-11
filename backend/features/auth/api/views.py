@@ -95,10 +95,16 @@ def owner_signup(request):
     except (InvalidOperation, TypeError, ValueError):
         return Response({'error': 'Invalid owner registration payment amount.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    expected_payment_channels = {
+        'Bakong QR': 'local_bank',
+        'ABA Bank': 'local_bank',
+        'Visa': 'card',
+        'Mastercard': 'card',
+        'PayPal': 'international_bank',
+    }
     if (
         payment_status != 'mock_paid'
-        or payment_channel != 'mobile_banking'
-        or payment_provider not in {'ABA Pay', 'ACLEDA'}
+        or expected_payment_channels.get(payment_provider) != payment_channel
         or paid_amount != owner_fee
     ):
         return Response({

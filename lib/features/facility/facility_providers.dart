@@ -162,20 +162,35 @@ final liveSlotAvailabilityWithDiagnosticsProvider = FutureProvider.autoDispose
       final session = ref.watch(authSessionProvider);
       final query = deserializeQuery(queryKey);
       final stopwatch = Stopwatch()..start();
-      final page = await client.getPage(
-        '/api/live-slots/',
-        query: query,
-        token: session?.token,
-      );
+      final allResults = <dynamic>[];
+      var pageNumber = 1;
+      var hasNext = false;
+
+      // Venue-specific searches request a 7-day window. Follow pagination so
+      // venues with many courts do not silently lose later dates.
+      do {
+        final pageQuery = <String, String>{
+          ...query,
+          'page': '$pageNumber',
+        };
+        final page = await client.getPage(
+          '/api/live-slots/',
+          query: pageQuery,
+          token: session?.token,
+        );
+        allResults.addAll(page['results'] as List<dynamic>);
+        hasNext = page['has_next'] == true;
+        pageNumber++;
+      } while (hasNext);
+
       stopwatch.stop();
-      final list = page['results'] as List<dynamic>;
       return FetchResult(
-        data: list
+        data: allResults
             .map(
               (e) => LiveSlotAvailability.fromJson(e as Map<String, dynamic>),
             )
             .toList(),
         durationMs: stopwatch.elapsedMilliseconds,
-        hasNext: page['has_next'] == true,
+        hasNext: false,
       );
     });

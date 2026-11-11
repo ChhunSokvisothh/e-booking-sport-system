@@ -247,6 +247,16 @@ def owner_facility_detail_endpoint(request, facility_id):
         facility.description = (request.data.get('description') or '').strip()
         update_fields.append('description')
 
+    if 'opening_hours' in request.data:
+        opening_hours = (request.data.get('opening_hours') or '').strip()
+        if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d\s*-\s*(?:[01]\d|2[0-3]):[0-5]\d', opening_hours):
+            return Response({'error': 'opening_hours must use HH:MM - HH:MM (24-hour time)'}, status=status.HTTP_400_BAD_REQUEST)
+        opening_time, closing_time = [value.strip() for value in opening_hours.split('-', 1)]
+        if closing_time <= opening_time:
+            return Response({'error': 'Closing time must be later than opening time.'}, status=status.HTTP_400_BAD_REQUEST)
+        facility.opening_hours = opening_hours
+        update_fields.append('opening_hours')
+
     if 'image_url' in request.data:
         facility.image_url = (request.data.get('image_url') or '').strip()
         update_fields.append('image_url')

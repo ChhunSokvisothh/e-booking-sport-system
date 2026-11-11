@@ -237,6 +237,12 @@ def owner_facilities_endpoint(request):
         is_indoor = bool(is_indoor_raw)
 
     base_price_raw = request.data.get('base_price_per_hour')
+    try:
+        court_count = int(request.data.get('court_count', 1))
+    except (TypeError, ValueError):
+        return Response({'error': 'court_count must be a whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if court_count < 1 or court_count > 100:
+        return Response({'error': 'court_count must be between 1 and 100.'}, status=status.HTTP_400_BAD_REQUEST)
     latitude_raw = request.data.get('latitude')
     longitude_raw = request.data.get('longitude')
 
@@ -283,6 +289,7 @@ def owner_facilities_endpoint(request):
         latitude=latitude,
         longitude=longitude,
         base_price_per_hour=base_price_per_hour,
+        court_count=court_count,
         rating=Decimal('0.0'),
         contact_phone=contact_phone,
         opening_hours=opening_hours,

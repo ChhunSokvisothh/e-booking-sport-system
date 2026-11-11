@@ -45,8 +45,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     DateTime.now().day,
   );
   bool _indoorOnly = false;
+  bool _appliedIndoorOnly = false;
   String? _sportType;
+  String? _appliedSportType;
   String? _selectedFacilityId;
+  String? _appliedFacilityId;
   int _selectedCourtNumber = 1;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
@@ -57,7 +60,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     super.initState();
     final now = DateTime.now();
     _sportType = widget.initialSportType;
+    _appliedSportType = widget.initialSportType;
     _selectedFacilityId = widget.initialFacilityId;
+    _appliedFacilityId = widget.initialFacilityId;
     final initialSlots = widget.initialSlots;
 
     if (initialSlots != null && initialSlots.isNotEmpty) {
@@ -69,7 +74,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       );
       _appliedDate = _selectedDate;
       _sportType = first.sportType;
+      _appliedSportType = first.sportType;
       _selectedFacilityId = first.facilityId;
+      _appliedFacilityId = first.facilityId;
       return;
     }
 
@@ -85,7 +92,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     );
     _appliedDate = _selectedDate;
     _sportType = initial.sportType;
+    _appliedSportType = initial.sportType;
     _selectedFacilityId = initial.facilityId;
+    _appliedFacilityId = initial.facilityId;
     if (initial.startAt.isAfter(now)) {
       _selectedSlotIds.add(initial.slotId);
     }
@@ -122,11 +131,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     final formatter = DateFormat('yyyy-MM-dd');
     return {
       'date': formatter.format(_appliedDate),
-      ...?_sportType == null ? null : {'sport_type': _sportType!},
-      ...?_selectedFacilityId == null
+      ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},
+      ...?_appliedFacilityId == null
           ? null
-          : {'facility_id': _selectedFacilityId!},
-      ...?_indoorOnly ? {'is_indoor': 'true'} : null,
+          : {'facility_id': _appliedFacilityId!},
+      ...?_appliedIndoorOnly ? {'is_indoor': 'true'} : null,
       'page': '$_slotPage',
       'page_size': '100',
     };
@@ -346,8 +355,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 _selectedDate = DateTime(now.year, now.month, now.day);
                 _appliedDate = _selectedDate;
                 _sportType = null;
+                _appliedSportType = null;
                 _indoorOnly = false;
+                _appliedIndoorOnly = false;
                 _selectedFacilityId = null;
+                _appliedFacilityId = null;
                 _selectedCourtNumber = 1;
                 _selectedSlotIds.clear();
                 _slotPage = 1;
@@ -589,7 +601,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: DateUtils.isSameDay(_selectedDate, _appliedDate)
+                    onPressed: DateUtils.isSameDay(_selectedDate, _appliedDate) &&
+                            _sportType == _appliedSportType &&
+                            _selectedFacilityId == _appliedFacilityId &&
+                            _indoorOnly == _appliedIndoorOnly
                         ? null
                         : () {
                             setState(() {
@@ -598,6 +613,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                                 _selectedDate.month,
                                 _selectedDate.day,
                               );
+                              _appliedSportType = _sportType;
+                              _appliedFacilityId = _selectedFacilityId;
+                              _appliedIndoorOnly = _indoorOnly;
                               _selectedCourtNumber = 1;
                               _selectedSlotIds.clear();
                               _slotPage = 1;

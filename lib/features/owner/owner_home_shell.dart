@@ -1243,8 +1243,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     OutlinedButton.icon(
                       onPressed: () async {
                         final picked = await ImagePicker().pickMultiImage(
-                          imageQuality: 80,
-                          maxWidth: 1600,
+                          imageQuality: 75,
+                          maxWidth: 1200,
                         );
                         if (picked.isNotEmpty) {
                           setDialogState(() {
@@ -1349,8 +1349,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       final uploadedImageUrls = <String>[];
       for (final photo in selectedVenueImages) {
         final bytes = await photo.readAsBytes();
-        if (bytes.length > 4 * 1024 * 1024) {
-          throw Exception('${photo.name} is larger than 4 MB. Choose a smaller image.');
+        if (bytes.length > 1800 * 1024) {
+          throw Exception('${photo.name} is larger than 1.8 MB. Choose a smaller image.');
         }
         final extension = photo.name.split('.').last.toLowerCase();
         final contentType = photo.mimeType ??

@@ -295,7 +295,10 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       'facility': widget.facilityName,
       'start_at': widget.startAt?.toIso8601String(),
       'end_at': widget.endAt?.toIso8601String(),
-      'amount': widget.totalPrice,
+      'amount': ((widget.totalPrice ?? 0) - _discountAmount(widget.totalPrice ?? 0))
+          .clamp(0, double.infinity)
+          .toStringAsFixed(2),
+      'coupon_code': _appliedCoupon?.code,
       'currency': widget.currency,
     });
   }

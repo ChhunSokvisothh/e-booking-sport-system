@@ -299,6 +299,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       }
 
       if (!mounted) {
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
         return;
       }
 

@@ -18,6 +18,7 @@ from reportlab.lib import colors
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -269,6 +270,11 @@ def deliver_paid_bookings_invoice(booking_ids):
         lines.append(f'<b>Total paid: USD {total:.2f}</b>')
         base = f'https://api.telegram.org/bot{token}'
         try:
+            invoice_url = _public_invoice_url(bookings)
+            if invoice_url:
+                lines.append(f'Invoice: {html.escape(invoice_url)}')
+            directions = _directions_url(bookings[0].facility)
+            lines.append(f'Directions: {html.escape(directions)}')
             response = requests.post(
                 f'{base}/sendMessage',
                 json={'chat_id': identity.telegram_user_id, 'text': '\n'.join(lines), 'parse_mode': 'HTML'},
@@ -276,16 +282,7 @@ def deliver_paid_bookings_invoice(booking_ids):
             )
             response.raise_for_status()
 
-            invoice_url = _public_invoice_url(bookings)
             output = _build_combined_invoice_pdf(bookings, receipt_id, invoice_url)
-            if invoice_url:
-                lines.append(f'Invoice: {html.escape(invoice_url)}')
-                response = requests.post(
-                    f'{base}/sendMessage',
-                    json={'chat_id': identity.telegram_user_id, 'text': '\\n'.join(lines), 'parse_mode': 'HTML'},
-                    timeout=10,
-                )
-                response.raise_for_status()
             response = requests.post(
                 f'{base}/sendDocument',
                 data={'chat_id': identity.telegram_user_id, 'caption': f'Invoice {receipt_id} — {len(bookings)} booking(s)'},
@@ -320,6 +317,62 @@ def deliver_paid_bookings_invoice_async(booking_ids):
 
 def deliver_paid_booking_invoice_async(booking_id):
     return deliver_paid_bookings_invoice_async([booking_id])
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_booking_invoice(request, token):
+    """Read-only invoice page opened by the QR code; the signed token expires after 30 days."""
+    try:
+        payload = signing.loads(token, salt='public-booking-invoice-v1', max_age=60 * 60 * 24 * 30)
+        booking_ids = sorted({int(value) for value in payload.get('booking_ids', [])})
+    except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError, AttributeError):
+        return HttpResponse('This invoice link is invalid or has expired.', status=410)
+
+    bookings = list(
+        Booking.objects.filter(
+            id__in=booking_ids,
+            payment_status=PaymentStatus.MOCK_PAID,
+            status=BookingStatus.CONFIRMED,
+        ).select_related('facility', 'time_slot').order_by('start_at', 'id')
+    )
+    if not booking_ids or len(bookings) != len(booking_ids):
+        return HttpResponse('Invoice not found or no longer available.', status=404)
+    if len({booking.facility_id for booking in bookings}) != 1 or len({booking.user_id for booking in bookings}) != 1:
+        return HttpResponse('Invalid invoice group.', status=400)
+
+    facility = bookings[0].facility
+    total = sum((booking.final_price for booking in bookings), start=bookings[0].final_price * 0)
+    receipt_id = f'EB-{min(booking_ids):06d}'
+    directions = _directions_url(facility)
+    rows = ''.join(
+        '<tr><td>#{}</td><td>{}</td><td>{}–{}</td><td>{} {}</td><td>USD {:.2f}</td></tr>'.format(
+            booking.id,
+            timezone.localtime(booking.start_at).strftime('%d %b %Y'),
+            timezone.localtime(booking.start_at).strftime('%H:%M'),
+            timezone.localtime(booking.end_at).strftime('%H:%M'),
+            'Table' if facility.sport_type == 'billiard' else 'Field',
+            booking.time_slot.court_number,
+            booking.final_price,
+        )
+        for booking in bookings
+    )
+    page = f'''<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Booking invoice {html.escape(receipt_id)}</title>
+    <style>
+      body{{font:16px Arial,sans-serif;background:#f3f5f8;color:#172033;margin:0;padding:24px}}
+      main{{max-width:760px;margin:24px auto;background:white;padding:28px;border-radius:16px;box-shadow:0 8px 30px #15223812}}
+      h1{{font-size:24px}} .paid{{color:#087443;font-weight:bold}} table{{width:100%;border-collapse:collapse;margin:24px 0}}
+      th,td{{padding:12px 8px;border-bottom:1px solid #e5e9ef;text-align:left}} a{{color:#075fbd}}
+      .total{{font-size:22px;font-weight:bold;text-align:right}} @media(max-width:560px){{body{{padding:8px}}main{{padding:16px}}th,td{{font-size:12px;padding:8px 4px}}}}
+    </style><body><main><h1>E-Booking Sport System</h1><h2>Booking payment invoice</h2>
+    <p><b>Receipt:</b> {html.escape(receipt_id)}</p><p><b>Venue:</b> {html.escape(facility.name)}</p>
+    <p><b>Address:</b> {html.escape(facility.location_name)}</p><p class="paid">Payment confirmed</p>
+    <table><thead><tr><th>Booking</th><th>Date</th><th>Time</th><th>Field/Table</th><th>Amount</th></tr></thead>
+    <tbody>{rows}</tbody></table><p class="total">Total paid: USD {total:.2f}</p>
+    <p><a href="{html.escape(directions, quote=True)}" target="_blank" rel="noopener">Get venue directions in Google Maps</a></p>
+    <small>This is a read-only invoice link. It expires 30 days after issue.</small></main></body></html>'''
+    return HttpResponse(page)
 
 
 @api_view(['POST'])

@@ -23,6 +23,7 @@ class MockPaymentScreen extends ConsumerStatefulWidget {
     this.chatbotSessionId,
     this.facilityName,
     this.courtNumber,
+    this.courtLabel,
     this.startAt,
     this.endAt,
     this.totalPrice,
@@ -39,6 +40,7 @@ class MockPaymentScreen extends ConsumerStatefulWidget {
   final String? chatbotSessionId;
   final String? facilityName;
   final int? courtNumber;
+  final String? courtLabel;
   final DateTime? startAt;
   final DateTime? endAt;
   final double? totalPrice;
@@ -291,6 +293,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       'booking_ids': _effectiveBookingIds,
       'facility': widget.facilityName,
       'court_number': widget.courtNumber,
+      'court_label': widget.courtLabel,
       'start_at': widget.startAt?.toIso8601String(),
       'end_at': widget.endAt?.toIso8601String(),
       'amount': ((widget.totalPrice ?? 0) - _discountAmount(widget.totalPrice ?? 0))
@@ -458,6 +461,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                     _ReceiptCard(
                       facilityName: widget.facilityName!,
                       courtNumber: widget.courtNumber,
+                      courtLabel: widget.courtLabel,
                       startAt: widget.startAt!,
                       endAt: widget.endAt!,
                       totalPrice: totalAfterDiscount,
@@ -721,6 +725,7 @@ class _ReceiptCard extends StatelessWidget {
   const _ReceiptCard({
     required this.facilityName,
     this.courtNumber,
+    this.courtLabel,
     required this.startAt,
     required this.endAt,
     required this.totalPrice,
@@ -734,6 +739,7 @@ class _ReceiptCard extends StatelessWidget {
 
   final String facilityName;
   final int? courtNumber;
+  final String? courtLabel;
   final DateTime startAt;
   final DateTime endAt;
   final double totalPrice;
@@ -812,7 +818,7 @@ class _ReceiptCard extends StatelessWidget {
                 children: [
                   _ReceiptMetaCard(label: 'Facility', value: facilityName),
                   if (courtNumber != null)
-                    _ReceiptMetaCard(label: 'Field', value: '${courtNumber}'),
+                    _ReceiptMetaCard(label: courtLabel ?? 'Field', value: '${courtNumber}'),
                   _ReceiptMetaCard(
                     label: 'Time',
                     value: '${DateFormat('EEE, dd MMM • HH:mm').format(startAt)} - ${DateFormat('HH:mm').format(endAt)}',

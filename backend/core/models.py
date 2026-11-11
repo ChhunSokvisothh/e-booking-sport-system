@@ -290,6 +290,11 @@ class OwnerApplication(models.Model):
     venue_name = models.CharField(max_length=160)
     contact_phone = models.CharField(max_length=40, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    payment_status = models.CharField(max_length=16, default='unpaid')
+    payment_amount = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
+    payment_channel = models.CharField(max_length=40, blank=True)
+    payment_provider = models.CharField(max_length=80, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

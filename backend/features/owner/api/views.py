@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from django.db import IntegrityError, models, transaction
@@ -133,7 +134,8 @@ def owner_facilities_endpoint(request):
     sport_type = (request.data.get('sport_type') or '').strip().lower()
     location_name = (request.data.get('location_name') or '').strip()
     description = (request.data.get('description') or '').strip()
-    image_url = (request.data.get('image_url') or '').strip()
+    contact_phone = (request.data.get('contact_phone') or '').strip()
+    opening_hours = (request.data.get('opening_hours') or '').strip()
     is_indoor_raw = request.data.get('is_indoor', False)
     if isinstance(is_indoor_raw, bool):
         is_indoor = is_indoor_raw
@@ -150,6 +152,16 @@ def owner_facilities_endpoint(request):
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
     if not location_name:
         return Response({'error': 'location_name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not opening_hours:
+        return Response({'error': 'opening_hours is required (for example, 08:00-22:00)'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
+        opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+        opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+        if opening_end <= opening_start:
+            raise ValueError
+    except (ValueError, TypeError):
+        return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
     if sport_type not in SportType.values:
         return Response({'error': f'sport_type must be one of: {", ".join(SportType.values)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -165,6 +177,8 @@ def owner_facilities_endpoint(request):
         longitude = float(longitude_raw)
     except Exception:
         return Response({'error': 'latitude and longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return Response({'error': 'Selected map location is outside valid coordinates.'}, status=status.HTTP_400_BAD_REQUEST)
 
     facility = Facility.objects.create(
         name=name,
@@ -175,7 +189,9 @@ def owner_facilities_endpoint(request):
         latitude=latitude,
         longitude=longitude,
         base_price_per_hour=base_price_per_hour,
-        image_url=image_url,
+        rating=Decimal('0.0'),
+        contact_phone=contact_phone,
+        opening_hours=opening_hours,
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,
         archived_at=None,
@@ -234,6 +250,23 @@ def owner_facility_detail_endpoint(request, facility_id):
     if 'description' in request.data:
         facility.description = (request.data.get('description') or '').strip()
         update_fields.append('description')
+
+    if 'contact_phone' in request.data:
+        facility.contact_phone = (request.data.get('contact_phone') or '').strip()
+        update_fields.append('contact_phone')
+
+    if 'opening_hours' in request.data:
+        opening_hours = (request.data.get('opening_hours') or '').strip()
+        try:
+            opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
+            opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+            opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+            if opening_end <= opening_start:
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
+        facility.opening_hours = opening_hours
+        update_fields.append('opening_hours')
 
     if 'image_url' in request.data:
         facility.image_url = (request.data.get('image_url') or '').strip()

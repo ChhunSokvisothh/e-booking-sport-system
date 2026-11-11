@@ -467,6 +467,11 @@ def owner_coupon_detail_endpoint(request, coupon_id):
         coupon.is_active = is_active
         update_fields = ['is_active', 'updated_at']
         if is_active:
+            if coupon.ends_at <= now:
+                return Response(
+                    {'error': 'This coupon has expired. Create a new coupon with a future end date.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if coupon.starts_at > now:
                 coupon.starts_at = now
                 update_fields.append('starts_at')

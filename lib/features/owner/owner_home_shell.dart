@@ -1158,7 +1158,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         return;
       }
     }
-    final isFirstVenue = _ownerRows!.isEmpty;
+    final isFirstVenue = !_ownerRows!.any(
+      (venue) => venue.ownerUserId == session.userUuid,
+    );
     final registeredVenueName = (session.ownerVenueName ?? '').trim();
     final nameCtrl = TextEditingController(
       text: isFirstVenue ? registeredVenueName : '',

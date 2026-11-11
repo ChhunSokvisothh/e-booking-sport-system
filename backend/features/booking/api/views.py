@@ -295,6 +295,8 @@ def mock_payment_endpoint(request):
         for i in range(1, len(ordered_slots)):
             if ordered_slots[i - 1].end_at != ordered_slots[i].start_at:
                 return Response({'error': 'Selected duration is no longer available. Please refresh and retry payment.'}, status=status.HTTP_409_CONFLICT)
+            if ordered_slots[i - 1].court_number != ordered_slots[i].court_number:
+                return Response({'error': 'A multi-hour booking must stay on the same field. Please select the time again.'}, status=status.HTTP_409_CONFLICT)
 
         slot = ordered_slots[0]
         slot_end = ordered_slots[-1].end_at

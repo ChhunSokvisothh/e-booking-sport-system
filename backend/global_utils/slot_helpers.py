@@ -196,7 +196,6 @@ def _ensure_rolling_slot_window():
                         current_bookings=0,
                         is_open=True,
                         reservation_hold_until=None,
-                        court_number=slot.court_number,
                     )
                 )
                 cursor = cursor + timedelta(hours=1)

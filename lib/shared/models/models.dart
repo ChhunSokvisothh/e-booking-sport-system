@@ -526,6 +526,7 @@ class LiveSlotAvailability {
       slotId: (json['slot_id'] ?? '').toString(),
       facilityId: (json['facility_id'] ?? '').toString(),
       facilityName: json['facility_name'] as String? ?? '-',
+      courtNumber: (json['court_number'] as num?)?.toInt() ?? 1,
       sportType: (json['sport_type'] as String? ?? 'unknown').toLowerCase(),
       startAt: DateTime.parse(json['start_at'] as String).toLocal(),
       endAt: DateTime.parse(json['end_at'] as String).toLocal(),

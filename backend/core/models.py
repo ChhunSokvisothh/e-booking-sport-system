@@ -60,7 +60,7 @@ class Facility(models.Model):
     latitude = models.FloatField(default=11.5564)
     longitude = models.FloatField(default=104.9282)
     base_price_per_hour = models.DecimalField(max_digits=10, decimal_places=2)
-    rating = models.DecimalField(max_digits=2, decimal_places=1, default=Decimal('4.5'))
+    rating = models.DecimalField(max_digits=2, decimal_places=1, default=Decimal('0.0'))
     
     # Existing field
     image_url = models.URLField(blank=True)

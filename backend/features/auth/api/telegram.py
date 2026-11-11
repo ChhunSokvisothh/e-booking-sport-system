@@ -70,6 +70,14 @@ def _auth_payload(user):
         "user_uuid": str(_uuid_from_user(user)),
         "email": user.email,
         "role": _role_for_user(user),
+        "owner_status": (
+            OwnerApplication.objects.filter(user_id=user.id)
+            .values_list('status', flat=True).first()
+        ),
+        "owner_venue_name": (
+            OwnerApplication.objects.filter(user_id=user.id)
+            .values_list('venue_name', flat=True).first()
+        ),
     }
 
 

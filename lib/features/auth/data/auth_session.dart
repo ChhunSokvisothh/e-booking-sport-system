@@ -11,6 +11,7 @@ class AuthSession {
     required this.email,
     this.role = 'user',
     this.ownerStatus,
+    this.ownerVenueName,
   });
 
   final String token;
@@ -19,6 +20,7 @@ class AuthSession {
   final String email;
   final String role;
   final String? ownerStatus;
+  final String? ownerVenueName;
 
   Map<String, dynamic> toJson() {
     return {
@@ -28,6 +30,7 @@ class AuthSession {
       'email': email,
       'role': role,
       'owner_status': ownerStatus,
+      'owner_venue_name': ownerVenueName,
     };
   }
 
@@ -39,6 +42,7 @@ class AuthSession {
       email: json['email'] as String,
       role: (json['role'] as String?) ?? 'user',
       ownerStatus: json['owner_status'] as String?,
+      ownerVenueName: json['owner_venue_name'] as String?,
     );
   }
 }

@@ -28,8 +28,6 @@ class FacilitySerializer(serializers.ModelSerializer):
             'cancellation_policy',
             'court_count',
             'owner_user_id',
-
-            'owner_user_id',
             'is_active',
             'archived_at',
         ]

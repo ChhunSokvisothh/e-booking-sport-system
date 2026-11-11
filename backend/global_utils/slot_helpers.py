@@ -203,15 +203,20 @@ def _ensure_rolling_slot_window():
         if not templates:
             continue
 
-        existing_dates = {
-            slot.start_at.astimezone(timezone.get_current_timezone()).date()
-            for slot in TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
-        }
+        existing_slots_by_date = {}
+        for existing_slot in TimeSlot.objects.filter(
+            facility=facility,
+            start_at__gte=window_start,
+            start_at__lt=window_end,
+        ):
+            local_date = existing_slot.start_at.astimezone(local_tz).date()
+            existing_slots_by_date.setdefault(local_date, []).append(existing_slot)
 
         created_slots = []
         for day_offset in range(BOOKING_WINDOW_DAYS + 1):
             target_date = (window_start + timedelta(days=day_offset)).date()
-            if target_date in existing_dates:
+            existing_day_slots = existing_slots_by_date.get(target_date, [])
+            if existing_day_slots and not facility.opening_hours:
                 continue
 
             for template in templates:
@@ -219,6 +224,15 @@ def _ensure_rolling_slot_window():
                 end_dt = timezone.make_aware(datetime.combine(target_date, template['end_time']))
                 if end_dt <= start_dt:
                     end_dt = start_dt + template['duration']
+
+                # Preserve booked/held slots and avoid overlapping them when a
+                # venue's opening hours have been changed.
+                overlaps_existing = any(
+                    existing.start_at < end_dt and existing.end_at > start_dt
+                    for existing in existing_day_slots
+                )
+                if overlaps_existing:
+                    continue
 
                 created_slots.append(
                     TimeSlot(
@@ -233,7 +247,7 @@ def _ensure_rolling_slot_window():
                 )
 
         if created_slots:
-            TimeSlot.objects.bulk_create(created_slots)
+            TimeSlot.objects.bulk_create(created_slots, ignore_conflicts=True)
             _sync_generated_slots_to_supabase_async(created_slots)
 
 

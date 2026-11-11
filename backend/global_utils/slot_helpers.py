@@ -122,17 +122,18 @@ def _ensure_rolling_slot_window():
                     'max_bookings': 3,
                 })
 
-        if facility.owner_user_id is not None and facility.opening_hours:
-            # Owner-managed venues always use their declared hours as the source of truth.
+        if facility.opening_hours:
+            # Opening hours are authoritative for every venue, including legacy
+            # seed venues that still have an old timetable in core_timeslot.
             templates = []
             try:
                 opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
                 opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
                 opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
-                cursor = datetime.combine(window_start.date(), opening_start)
+                opening_cursor = datetime.combine(window_start.date(), opening_start)
                 closing = datetime.combine(window_start.date(), opening_end)
                 for court_number in range(1, max(1, int(facility.court_count or 1)) + 1):
-                    cursor = datetime.combine(window_start.date(), opening_start)
+                    cursor = opening_cursor
                     while cursor + timedelta(hours=1) <= closing:
                         next_cursor = cursor + timedelta(hours=1)
                         templates.append({
@@ -171,6 +172,58 @@ def _ensure_rolling_slot_window():
         TimeSlot.objects.filter(id__in=protected_ids).update(is_open=False, reservation_hold_until=None)
 
     for facility in all_facilities:
+        templates = template_map.get(facility.id) or []
+
+        # Remove stale, unbooked slots that fall outside the venue's configured
+        # hours (for example, old 16:00-22:00 seed slots on an 08:00-16:00 venue).
+        if facility.opening_hours:
+            expected_keys = set()
+            for day_offset in range(BOOKING_WINDOW_DAYS + 1):
+                target_date = (window_start + timedelta(days=day_offset)).date()
+                for template in templates:
+                    expected_keys.add((
+                        target_date,
+                        template['start_time'],
+                        template['end_time'],
+                        template.get('court_number', 1),
+                    ))
+
+            current_slots = TimeSlot.objects.filter(
+                facility=facility,
+                start_at__gte=window_start,
+                start_at__lt=window_end,
+            ).annotate(booking_count=models.Count('bookings'))
+            stale_unbooked_ids = []
+            stale_booked_ids = []
+            for slot in current_slots:
+                local_start = slot.start_at.astimezone(local_tz)
+                local_end = slot.end_at.astimezone(local_tz)
+                key = (
+                    local_start.date(),
+                    local_start.time().replace(tzinfo=None),
+                    local_end.time().replace(tzinfo=None),
+                    slot.court_number,
+                )
+                if key in expected_keys:
+                    continue
+                if slot.booking_count:
+                    stale_booked_ids.append(slot.id)
+                else:
+                    stale_unbooked_ids.append(slot.id)
+
+            if stale_unbooked_ids:
+                TimeSlot.objects.filter(id__in=stale_unbooked_ids).delete()
+                try:
+                    supabase = _get_supabase_client()
+                    supabase.table(settings.SUPABASE_TIMESLOT_TABLE).delete().in_('id', stale_unbooked_ids).execute()
+                except Exception:
+                    pass
+            if stale_booked_ids:
+                TimeSlot.objects.filter(id__in=stale_booked_ids).update(
+                    is_open=False,
+                    reservation_hold_until=None,
+                )
+
         # Normalize existing future slots to 1-hour granularity for booking UX.
         split_candidates = list(
             TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
@@ -214,7 +267,6 @@ def _ensure_rolling_slot_window():
             except Exception:
                 pass
 
-        templates = template_map.get(facility.id) or []
         if not templates:
             continue
 

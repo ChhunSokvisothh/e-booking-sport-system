@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Booking, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
+from core.models import Booking, BookingStatus, Coupon, Facility, OwnerApplication, PaymentStatus, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
 from global_utils.view_helpers import (
     COUPON_ARCHIVE_RETENTION_DAYS,
@@ -418,3 +418,60 @@ def owner_coupon_detail_endpoint(request, coupon_id):
             'retention_days': COUPON_ARCHIVE_RETENTION_DAYS,
         }
     )
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def owner_applications_admin_endpoint(request, application_id=None):
+    if not request.user.is_superuser:
+        return Response({'error': 'Superadmin access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'GET':
+        applications = OwnerApplication.objects.select_related('user').order_by('created_at')
+        status_filter = (request.query_params.get('status') or '').strip().lower()
+        if status_filter in OwnerApplication.Status.values:
+            applications = applications.filter(status=status_filter)
+        return Response([
+            {
+                'id': application.id,
+                'user_id': application.user_id,
+                'email': application.user.email,
+                'venue_name': application.venue_name,
+                'contact_phone': application.contact_phone,
+                'status': application.status,
+                'created_at': application.created_at,
+                'reviewed_at': application.reviewed_at,
+            }
+            for application in applications
+        ])
+
+    if application_id is None:
+        return Response({'error': 'Application ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        application = OwnerApplication.objects.select_related('user').get(pk=application_id)
+    except OwnerApplication.DoesNotExist:
+        return Response({'error': 'Owner application not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    decision = (request.data.get('status') or '').strip().lower()
+    if decision not in (OwnerApplication.Status.APPROVED, OwnerApplication.Status.REJECTED):
+        return Response({'error': 'status must be approved or rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status != OwnerApplication.Status.PENDING:
+        return Response({'error': 'This application has already been reviewed.'}, status=status.HTTP_409_CONFLICT)
+
+    with transaction.atomic():
+        application.status = decision
+        application.reviewed_at = timezone.now()
+        application.save(update_fields=['status', 'reviewed_at'])
+        application.user.is_staff = decision == OwnerApplication.Status.APPROVED
+        application.user.save(update_fields=['is_staff'])
+
+    return Response({
+        'id': application.id,
+        'user_id': application.user_id,
+        'email': application.user.email,
+        'venue_name': application.venue_name,
+        'contact_phone': application.contact_phone,
+        'status': application.status,
+        'reviewed_at': application.reviewed_at,
+    })

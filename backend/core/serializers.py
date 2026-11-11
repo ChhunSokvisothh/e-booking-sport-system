@@ -28,11 +28,10 @@ class FacilitySerializer(serializers.ModelSerializer):
             'cancellation_policy',
             'court_count',
             'owner_user_id',
-
-            'owner_user_id',
             'is_active',
             'archived_at',
         ]
+        read_only_fields = ['rating', 'owner_user_id']
 
 
 class TimeSlotSerializer(serializers.ModelSerializer):

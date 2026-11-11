@@ -42,6 +42,7 @@ class AuthController {
       email: result['email'] as String,
       role: (result['role'] as String?) ?? current.role,
       ownerStatus: result['owner_status'] as String? ?? current.ownerStatus,
+      ownerVenueName: result['owner_venue_name'] as String? ?? current.ownerVenueName,
     );
     _ref.read(authSessionProvider.notifier).state = updated;
     await persistAuthSession(updated);
@@ -62,6 +63,8 @@ class AuthController {
     required String password,
     required String venueName,
     required String contactPhone,
+    required String paymentChannel,
+    required String paymentProvider,
   }) async {
     final result = await _ref
         .read(apiClientProvider)
@@ -70,6 +73,10 @@ class AuthController {
           'password': password,
           'venue_name': venueName,
           'contact_phone': contactPhone,
+          'payment_status': 'mock_paid',
+          'amount': '20.00',
+          'payment_channel': paymentChannel,
+          'payment_provider': paymentProvider,
         });
     await _saveSessionFromAuthResponse(result);
   }
@@ -111,6 +118,7 @@ class AuthController {
       email: json['email'] as String,
       role: (json['role'] as String?) ?? 'user',
       ownerStatus: json['owner_status'] as String?,
+      ownerVenueName: json['owner_venue_name'] as String?,
     );
     _ref.read(authSessionProvider.notifier).state = session;
     await persistAuthSession(session);

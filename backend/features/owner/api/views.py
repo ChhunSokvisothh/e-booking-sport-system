@@ -37,8 +37,15 @@ def active_coupons_endpoint(request):
 
     # Owner coupons are venue-specific. Checkout must request coupons for the
     # venue being booked; without a venue context, expose only global coupons.
-    facility_id = (request.query_params.get('facility_id') or '').strip()
-    if facility_id:
+    facility_id_raw = (request.query_params.get('facility_id') or '').strip()
+    if facility_id_raw:
+        try:
+            facility_id = int(facility_id_raw)
+        except (TypeError, ValueError):
+            return Response({'error': 'facility_id must be a valid venue ID.'}, status=status.HTTP_400_BAD_REQUEST)
+        if facility_id <= 0:
+            return Response({'error': 'facility_id must be a valid venue ID.'}, status=status.HTTP_400_BAD_REQUEST)
+
         facility = Facility.objects.filter(
             id=facility_id,
             is_active=True,

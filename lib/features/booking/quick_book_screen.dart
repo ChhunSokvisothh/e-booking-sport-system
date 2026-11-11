@@ -279,6 +279,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             facilityId: int.tryParse(first.facilityId),
             facilityName: first.facilityName,
             courtNumber: first.courtNumber,
+            courtLabel: first.sportType == 'billiard' ? 'Table' : 'Field',
             startAt: first.startAt,
             endAt: last.endAt,
             totalPrice: total,

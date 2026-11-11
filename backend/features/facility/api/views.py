@@ -143,7 +143,7 @@ def live_slots_endpoint(request):
     except (TypeError, ValueError):
         page_size = 100
 
-    # Query only the selected date and the fields used by this response.
+    # Query only the requested date window and the fields used by this response.
     slots_qs = TimeSlot.objects.select_related('facility').filter(
         facility__is_active=True,
     )

@@ -106,6 +106,11 @@ def owner_signup(request):
                 venue_name=venue_name,
                 contact_phone=phone,
                 status=OwnerApplication.Status.APPROVED,
+                payment_status='mock_paid',
+                payment_amount=owner_fee,
+                payment_channel=payment_channel,
+                payment_provider=payment_provider,
+                paid_at=timezone.now(),
                 reviewed_at=timezone.now(),
             )
             token, _ = Token.objects.get_or_create(user=user)

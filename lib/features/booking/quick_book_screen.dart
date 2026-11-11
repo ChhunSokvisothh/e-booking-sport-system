@@ -351,6 +351,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 _sportType = null;
                 _indoorOnly = false;
                 _selectedFacilityId = null;
+                _selectedCourtNumber = 1;
                 _selectedSlotIds.clear();
                 _slotPage = 1;
               });

@@ -89,6 +89,17 @@ def owner_signup(request):
 
     if not email or not password or not venue_name:
         return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _rate_limit_check(
+        request,
+        action='owner-signup',
+        identifier='owner-registration',
+        limit=5,
+        window_seconds=3600,
+    ):
+        return Response(
+            {'error': 'Too many owner registration attempts. Please try again later.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
     if len(password) < 8:
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username=email).exists():

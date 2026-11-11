@@ -78,7 +78,7 @@ def owner_signup(request):
     """Create an owner account only after the simulated registration payment succeeds."""
     email = (request.data.get('email') or '').strip().lower()
     password = (request.data.get('password') or '').strip()
-    venue_name = (request.data.get('venue_name') or '').strip()
+    venue_name = ''
     phone = (request.data.get('contact_phone') or '').strip()
     payment_provider = (request.data.get('payment_provider') or '').strip()
     payment_channel = (request.data.get('payment_channel') or '').strip().lower()
@@ -87,8 +87,8 @@ def owner_signup(request):
     except (InvalidOperation, TypeError, ValueError):
         paid_amount = None
 
-    if not email or not password or not venue_name:
-        return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not email or not password:
+        return Response({'error': 'email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
     if not _rate_limit_check(
         request,
         action='owner-signup',

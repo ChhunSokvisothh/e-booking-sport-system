@@ -1090,7 +1090,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                           ),
                         ],
                       ),
-                      const RichAttributionWidget(
+                      RichAttributionWidget(
                         attributions: [TextSourceAttribution('OpenStreetMap contributors')],
                       ),
                     ],

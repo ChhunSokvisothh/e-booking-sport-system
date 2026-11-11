@@ -129,15 +129,27 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
 
   Map<String, String> _buildQuery() {
     final formatter = DateFormat('yyyy-MM-dd');
+    final hasSelectedVenue = _appliedFacilityId != null;
+    final today = DateTime.now();
+    final rangeStart = DateTime(today.year, today.month, today.day);
+    final rangeEnd = rangeStart.add(const Duration(days: 6));
+
     return {
-      'date': formatter.format(_appliedDate),
+      // When a venue is selected, fetch the whole visible 7-day date strip once.
+      // Date-chip changes then filter this cached result locally instead of
+      // making another network request for every day.
+      if (hasSelectedVenue) ...{
+        'start_date': formatter.format(rangeStart),
+        'end_date': formatter.format(rangeEnd),
+      } else
+        'date': formatter.format(_appliedDate),
       ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},
       ...?_appliedFacilityId == null
           ? null
           : {'facility_id': _appliedFacilityId!},
       ...?_appliedIndoorOnly ? {'is_indoor': 'true'} : null,
-      'page': '$_slotPage',
-      'page_size': '100',
+      'page': '1',
+      'page_size': hasSelectedVenue ? '1000' : '100',
     };
   }
 

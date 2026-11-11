@@ -1081,7 +1081,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     children: [
                       TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.ebookingsport.app',
+                        userAgentPackageName: 'com.example.my_project',
                       ),
                       MarkerLayer(
                         markers: hasSelection

@@ -65,6 +65,7 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
   void _invalidateRelatedCouponProviders() {
     ref.invalidate(ownerCouponsProvider);
     ref.invalidate(activeCouponsProvider);
+    ref.invalidate(activeCouponsForFacilityProvider);
   }
 
   @override

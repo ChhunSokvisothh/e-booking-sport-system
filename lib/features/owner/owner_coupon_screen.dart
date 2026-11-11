@@ -197,6 +197,13 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
         _upsertCoupon(coupon);
       }
       _invalidateRelatedCouponProviders();
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Unable to update coupon.' : message)),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _processingCouponId = null);
@@ -234,6 +241,13 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
         _upsertCoupon(coupon);
       }
       _invalidateRelatedCouponProviders();
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Unable to delete coupon.' : message)),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _processingCouponId = null);

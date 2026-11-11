@@ -127,8 +127,8 @@ def owner_venue_image_upload(request):
         raw = base64.b64decode(encoded, validate=True)
     except Exception:
         return Response({'error': 'The image upload payload is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
-    if not raw or len(raw) > 4 * 1024 * 1024:
-        return Response({'error': 'Each venue image must be smaller than 4 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not raw or len(raw) > 1800 * 1024:
+        return Response({'error': 'Each venue image must be smaller than 1.8 MB.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         return Response({'error': 'Venue image storage is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

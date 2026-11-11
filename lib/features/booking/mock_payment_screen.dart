@@ -63,6 +63,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
   int _selectedMethod = 0;
   final TextEditingController _couponCodeCtrl = TextEditingController();
   CouponItem? _appliedCoupon;
+  bool _applyingCoupon = false;
 
   @override
   void initState() {
@@ -185,31 +186,66 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     }
   }
 
-  CouponItem? _findCouponByCode(List<CouponItem> coupons, String rawCode) {
-    final code = rawCode.trim().toUpperCase();
+  Future<void> _applyCouponCode() async {
+    final code = _couponCodeCtrl.text.trim().toUpperCase();
     if (code.isEmpty) {
-      return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a coupon code first.')),
+      );
+      return;
     }
-    for (final coupon in coupons) {
-      if (coupon.code == code) {
-        return coupon;
+
+    final session = ref.read(authSessionProvider);
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again to validate this coupon.')),
+      );
+      return;
+    }
+
+    setState(() => _applyingCoupon = true);
+    try {
+      final query = <String, String>{'code': code};
+      final facilityId = _effectiveFacilityId;
+      if (facilityId != null) {
+        query['facility_id'] = facilityId.toString();
       }
-    }
-    return null;
-  }
 
-  void _showCouponValidationMessage(List<CouponItem> coupons, String rawCode) {
-    final code = rawCode.trim().toUpperCase();
-    String message;
-    if (code.isEmpty) {
-      message = 'Enter a coupon code first.';
-    } else if (coupons.isEmpty) {
-      message = 'No active coupons right now. Please try again later.';
-    } else {
-      message = 'Coupon not available. It may be expired, inactive, or entered incorrectly.';
-    }
+      final rows = await ref.read(apiClientProvider).getList(
+        '/api/coupons/active/',
+        query,
+        session.token,
+      );
+      if (rows.isEmpty) {
+        throw Exception(
+          'Coupon is invalid for this venue, inactive, expired, or not found.',
+        );
+      }
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final coupon = CouponItem.fromJson(
+        Map<String, dynamic>.from(rows.first as Map),
+      );
+      if (!mounted) return;
+      setState(() {
+        _appliedCoupon = coupon;
+        _couponCodeCtrl.text = coupon.code;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${coupon.code} applied — ${coupon.discountPercent.toStringAsFixed(0)}% off.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '').trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _applyingCoupon = false);
+    }
   }
 
   double _discountAmount(double total) {
@@ -386,10 +422,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 430;
     final tiny = width < 360;
-    final facilityId = _effectiveFacilityId;
-    final couponsAsync = facilityId == null
-        ? ref.watch(activeCouponsProvider)
-        : ref.watch(activeCouponsForFacilityProvider(facilityId));
     final originalTotal = widget.totalPrice ?? 0;
     final discountAmount = _discountAmount(originalTotal);
     final totalAfterDiscount = (originalTotal - discountAmount).clamp(0, double.infinity).toDouble();
@@ -474,31 +506,21 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                           }),
                                         ),
                                 ),
-                                onSubmitted: (value) {
-                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                  final found = _findCouponByCode(coupons, value);
-                                  if (found != null) {
-                                    _applyCoupon(found);
-                                  } else {
-                                    _showCouponValidationMessage(coupons, value);
-                                  }
-                                },
+                                onSubmitted: (_) => _applyCouponCode(),
                               ),
                               const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                    final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
-                                    if (found != null) {
-                                      _applyCoupon(found);
-                                    } else {
-                                      _showCouponValidationMessage(coupons, _couponCodeCtrl.text);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.sell_outlined),
-                                  label: const Text('Apply Code'),
+                                  onPressed: _applyingCoupon ? null : _applyCouponCode,
+                                  icon: _applyingCoupon
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.sell_outlined),
+                                  label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
                                 ),
                               ),
                             ],
@@ -523,39 +545,31 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                             }),
                                           ),
                                   ),
-                                  onSubmitted: (value) {
-                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                    final found = _findCouponByCode(coupons, value);
-                                    if (found != null) {
-                                      _applyCoupon(found);
-                                    } else {
-                                      _showCouponValidationMessage(coupons, value);
-                                    }
-                                  },
+                                  onSubmitted: (_) => _applyCouponCode(),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               OutlinedButton.icon(
-                                onPressed: () {
-                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                  final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
-                                  if (found != null) {
-                                    _applyCoupon(found);
-                                  } else {
-                                    _showCouponValidationMessage(coupons, _couponCodeCtrl.text);
-                                  }
-                                },
-                                icon: const Icon(Icons.sell_outlined),
-                                label: const Text('Apply Code'),
+                                onPressed: _applyingCoupon ? null : _applyCouponCode,
+                                  icon: _applyingCoupon
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.sell_outlined),
+                                  label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
                               ),
                             ],
                           ),
                         const SizedBox(height: 8),
-                        couponsAsync.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 4),
-                            child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const Text(
+                          'Enter the coupon code provided by this venue, then tap Apply Code.',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
                           ),
+                        ),
                           error: (error, stack) => const Text('Unable to load coupons right now.'),
                           data: (coupons) {
                             if (coupons.isEmpty) {

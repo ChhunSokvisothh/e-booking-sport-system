@@ -116,8 +116,8 @@ def live_slots_endpoint(request):
     is_indoor_raw = request.query_params.get('is_indoor')
     requested_date, day_start, day_end = _date_bounds_for_query(date_str)
 
-    # A venue-specific booking search can request the complete visible date
-    # strip in one call. This lets the client switch dates instantly.
+    # Booking searches can request the complete visible date strip in one
+    # call. This lets the client switch dates instantly.
     if start_date_str or end_date_str:
         range_start_date, range_start, _ = _date_bounds_for_query(start_date_str)
         range_end_date, _, range_end = _date_bounds_for_query(end_date_str)

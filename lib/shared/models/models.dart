@@ -21,6 +21,7 @@ class Facility {
     required this.surfaceType,
     required this.cancellationPolicy,
     required this.courtCount,
+    this.ownerUserId,
 
   });
 
@@ -45,6 +46,7 @@ class Facility {
   final String surfaceType;
   final String cancellationPolicy;
   final int courtCount;
+  final String? ownerUserId;
 
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
@@ -69,7 +71,7 @@ class Facility {
       latitude: _toDouble(json['latitude']),
       longitude: _toDouble(json['longitude']),
       basePricePerHour: _toDouble(json['base_price_per_hour']),
-      rating: _toDouble(json['rating'], fallback: 4.5),
+      rating: _toDouble(json['rating'], fallback: 0.0),
       imageUrl: (image == null || image.isEmpty) ? null : image,
       isActive: json['is_active'] as bool? ?? true,
       archivedAt: (json['archived_at'] as String?) == null
@@ -93,6 +95,7 @@ class Facility {
       cancellationPolicy:
           json['cancellation_policy'] as String? ?? '',
       courtCount: (json['court_count'] as num?)?.toInt() ?? 1,
+      ownerUserId: json['owner_user_id'] as String?,
 
     );
   }

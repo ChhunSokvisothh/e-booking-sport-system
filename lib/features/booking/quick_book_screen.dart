@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -40,30 +39,30 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     DateTime.now().month,
     DateTime.now().day,
   );
+  DateTime _appliedDate = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+  );
   bool _indoorOnly = false;
+  bool _appliedIndoorOnly = false;
   String? _sportType;
+  String? _appliedSportType;
   String? _selectedFacilityId;
+  String? _appliedFacilityId;
   int _selectedCourtNumber = 1;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
   int _slotPage = 1;
-  Timer? _availabilityRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted && !_processing) {
-        ref.invalidate(
-          liveSlotAvailabilityWithDiagnosticsProvider(
-            serializeQuery(_buildQuery()),
-          ),
-        );
-      }
-    });
     final now = DateTime.now();
     _sportType = widget.initialSportType;
+    _appliedSportType = widget.initialSportType;
     _selectedFacilityId = widget.initialFacilityId;
+    _appliedFacilityId = widget.initialFacilityId;
     final initialSlots = widget.initialSlots;
 
     if (initialSlots != null && initialSlots.isNotEmpty) {
@@ -73,8 +72,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         first.startAt.month,
         first.startAt.day,
       );
+      _appliedDate = _selectedDate;
       _sportType = first.sportType;
+      _appliedSportType = first.sportType;
       _selectedFacilityId = first.facilityId;
+      _appliedFacilityId = first.facilityId;
       return;
     }
 
@@ -88,17 +90,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       initial.startAt.month,
       initial.startAt.day,
     );
+    _appliedDate = _selectedDate;
     _sportType = initial.sportType;
+    _appliedSportType = initial.sportType;
     _selectedFacilityId = initial.facilityId;
+    _appliedFacilityId = initial.facilityId;
     if (initial.startAt.isAfter(now)) {
       _selectedSlotIds.add(initial.slotId);
     }
-  }
-
-  @override
-  void dispose() {
-    _availabilityRefreshTimer?.cancel();
-    super.dispose();
   }
 
   double _slotDurationHours(LiveSlotAvailability slot) {
@@ -130,15 +129,24 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
 
   Map<String, String> _buildQuery() {
     final formatter = DateFormat('yyyy-MM-dd');
+    // Preload the complete visible week once. Date-chip changes are then
+    // local filters and do not wait for another availability request.
+    final today = DateTime.now();
+    final rangeStart = DateTime(today.year, today.month, today.day);
+    final rangeEnd = rangeStart.add(const Duration(days: 6));
+
     return {
-      'date': formatter.format(_selectedDate),
-      ...?_sportType == null ? null : {'sport_type': _sportType!},
-      ...?_selectedFacilityId == null
+      // Fetch the whole visible 7-day date strip once. Date-chip changes then
+      // filter this cached result locally instead of making another request.
+      'start_date': formatter.format(rangeStart),
+      'end_date': formatter.format(rangeEnd),
+      ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},
+      ...?_appliedFacilityId == null
           ? null
-          : {'facility_id': _selectedFacilityId!},
-      ...?_indoorOnly ? {'is_indoor': 'true'} : null,
-      'page': '$_slotPage',
-      'page_size': '100',
+          : {'facility_id': _appliedFacilityId!},
+      ...?_appliedIndoorOnly ? {'is_indoor': 'true'} : null,
+      'page': '1',
+      'page_size': '1000',
     };
   }
 
@@ -354,9 +362,13 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
               setState(() {
                 final now = DateTime.now();
                 _selectedDate = DateTime(now.year, now.month, now.day);
+                _appliedDate = _selectedDate;
                 _sportType = null;
+                _appliedSportType = null;
                 _indoorOnly = false;
+                _appliedIndoorOnly = false;
                 _selectedFacilityId = null;
+                _appliedFacilityId = null;
                 _selectedCourtNumber = 1;
                 _selectedSlotIds.clear();
                 _slotPage = 1;
@@ -394,9 +406,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             final allRows = payload.data;
             final dateRows = allRows.where((row) {
               final d = row.startAt;
-              return d.year == _selectedDate.year &&
-                  d.month == _selectedDate.month &&
-                  d.day == _selectedDate.day;
+              return d.year == _appliedDate.year &&
+                  d.month == _appliedDate.month &&
+                  d.day == _appliedDate.day;
             }).toList()..sort((a, b) => a.startAt.compareTo(b.startAt));
 
             final facilityIds = <String>{};
@@ -592,6 +604,34 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         },
                       );
                     },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: DateUtils.isSameDay(_selectedDate, _appliedDate) &&
+                            _sportType == _appliedSportType &&
+                            _selectedFacilityId == _appliedFacilityId &&
+                            _indoorOnly == _appliedIndoorOnly
+                        ? null
+                        : () {
+                            setState(() {
+                              _appliedDate = DateTime(
+                                _selectedDate.year,
+                                _selectedDate.month,
+                                _selectedDate.day,
+                              );
+                              _appliedSportType = _sportType;
+                              _appliedFacilityId = _selectedFacilityId;
+                              _appliedIndoorOnly = _indoorOnly;
+                              _selectedCourtNumber = 1;
+                              _selectedSlotIds.clear();
+                              _slotPage = 1;
+                            });
+                          },
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('Search availability'),
                   ),
                 ),
                 const SizedBox(height: 18),

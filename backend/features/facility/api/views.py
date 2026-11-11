@@ -111,8 +111,26 @@ def live_slots_endpoint(request):
     sport_type = (request.query_params.get('sport_type') or '').strip().lower()
     facility_id = (request.query_params.get('facility_id') or '').strip()
     date_str = (request.query_params.get('date') or '').strip()
+    start_date_str = (request.query_params.get('start_date') or '').strip()
+    end_date_str = (request.query_params.get('end_date') or '').strip()
     is_indoor_raw = request.query_params.get('is_indoor')
     requested_date, day_start, day_end = _date_bounds_for_query(date_str)
+
+    # Booking searches can request the complete visible date strip in one
+    # call. This lets the client switch dates instantly.
+    if start_date_str or end_date_str:
+        range_start_date, range_start, _ = _date_bounds_for_query(start_date_str)
+        range_end_date, _, range_end = _date_bounds_for_query(end_date_str)
+        if (
+            range_start_date is None
+            or range_end_date is None
+            or range_end_date < range_start_date
+        ):
+            return Response({'detail': 'Invalid availability date range.'}, status=400)
+        requested_date = None
+        day_start = range_start
+        day_end = range_end
+
     now = timezone.now()
     local_today = timezone.localdate()
 
@@ -121,11 +139,11 @@ def live_slots_endpoint(request):
     except (TypeError, ValueError):
         page = 1
     try:
-        page_size = min(100, max(10, int(request.query_params.get('page_size', '100'))))
+        page_size = min(1000, max(10, int(request.query_params.get('page_size', '100'))))
     except (TypeError, ValueError):
         page_size = 100
 
-    # Query only the selected date and the fields used by this response.
+    # Query only the requested date window and the fields used by this response.
     slots_qs = TimeSlot.objects.select_related('facility').filter(
         facility__is_active=True,
     )

@@ -10,7 +10,7 @@ import 'facility_providers.dart';
 import 'favorite_facility_provider.dart';
 import 'venue_detail_screen.dart';
 
-class ExploreScreen extends ConsumerWidget {
+class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({
     super.key,
     required this.onOpenDashboard,
@@ -19,9 +19,17 @@ class ExploreScreen extends ConsumerWidget {
   final VoidCallback onOpenDashboard;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
+}
+
+class _ExploreScreenState extends ConsumerState<ExploreScreen> {
+  String _activeSport = 'all';
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(authSessionProvider);
     final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
+    final sports = ['all', ...SportVisuals.all.map((sport) => sport.sportType)];
     final facilitiesAsync = ref.watch(facilityListProvider);
 
     return ListView(
@@ -36,7 +44,27 @@ class ExploreScreen extends ConsumerWidget {
           'Your shortlist, ready whenever you want to play.',
           style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: sports.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final sport = sports[index];
+              final selected = _activeSport == sport;
+              final label = sport == 'all' ? 'All sports' : SportVisuals.of(sport).label;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _activeSport = sport),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
         if (session == null)
           Container(
             padding: const EdgeInsets.all(18),
@@ -70,8 +98,19 @@ class ExploreScreen extends ConsumerWidget {
               ],
             ),
             data: (facilities) {
-              final saved = facilities.where((facility) => favoriteIds.contains(facility.id)).toList();
+              final allSaved = facilities.where((facility) => favoriteIds.contains(facility.id)).toList();
+              final saved = _activeSport == 'all'
+                  ? allSaved
+                  : allSaved.where((facility) => facility.sportType.toLowerCase() == _activeSport).toList();
               if (saved.isEmpty) {
+                if (allSaved.isNotEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Center(
+                      child: Text('No saved ${SportVisuals.of(_activeSport).label.toLowerCase()} venues.'),
+                    ),
+                  );
+                }
                 return Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(

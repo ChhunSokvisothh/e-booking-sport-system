@@ -1147,10 +1147,12 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     }
     if (!mounted) return;
 
+    final registeredVenueName =
+        (ownerProfile['venue_name'] as String? ?? '').trim();
+    final useRegisteredVenueName =
+        (_ownerRows?.isEmpty ?? true) && registeredVenueName.isNotEmpty;
     final nameCtrl = TextEditingController(
-      text: (_ownerRows?.isEmpty ?? true)
-          ? ((ownerProfile['venue_name'] as String?) ?? '')
-          : '',
+      text: useRegisteredVenueName ? registeredVenueName : '',
     );
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
@@ -1175,12 +1177,27 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Venue Name',
+                    if (useRegisteredVenueName)
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Registered Venue Name',
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            registeredVenueName,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                        ),
+                      )
+                    else
+                      TextField(
+                        controller: nameCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Venue Name',
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: locationCtrl,

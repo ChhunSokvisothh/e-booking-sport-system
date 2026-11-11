@@ -258,6 +258,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         MaterialPageRoute(
           builder: (_) => MockPaymentScreen(
             bookingIds: bookingIds,
+            facilityId: int.tryParse(first.facilityId),
             facilityName: first.facilityName,
             startAt: first.startAt,
             endAt: last.endAt,

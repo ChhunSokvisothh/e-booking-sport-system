@@ -15,6 +15,7 @@ class MockPaymentScreen extends ConsumerStatefulWidget {
     super.key,
     this.bookingId,
     this.bookingIds = const [],
+    this.facilityId,
     this.chatOption,
     this.paymentQuote,
     this.bookingSource,
@@ -29,6 +30,7 @@ class MockPaymentScreen extends ConsumerStatefulWidget {
 
   final int? bookingId;
   final List<int> bookingIds;
+  final int? facilityId;
   final Map<String, dynamic>? chatOption;
   final Map<String, dynamic>? paymentQuote;
   final String? bookingSource;
@@ -176,6 +178,13 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     });
   }
 
+  void _handleCouponTextChanged(String value) {
+    final applied = _appliedCoupon;
+    if (applied != null && value.trim().toUpperCase() != applied.code) {
+      setState(() => _appliedCoupon = null);
+    }
+  }
+
   CouponItem? _findCouponByCode(List<CouponItem> coupons, String rawCode) {
     final code = rawCode.trim().toUpperCase();
     if (code.isEmpty) {
@@ -215,6 +224,24 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     return widget.bookingIds.isNotEmpty
         ? widget.bookingIds
         : (widget.bookingId == null ? const <int>[] : <int>[widget.bookingId!]);
+  }
+
+  int? get _effectiveFacilityId {
+    if (widget.facilityId != null) {
+      return widget.facilityId;
+    }
+
+    final rawFacilityId = widget.chatOption?['facility_id'];
+    if (rawFacilityId is num) {
+      return rawFacilityId.toInt();
+    }
+    final parsed = int.tryParse(rawFacilityId?.toString() ?? '');
+    if (parsed != null) {
+      return parsed;
+    }
+
+    final optionId = widget.chatOption?['option_id']?.toString() ?? '';
+    return int.tryParse(optionId.split(':').first);
   }
 
   String get _receiptId {
@@ -359,7 +386,10 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 430;
     final tiny = width < 360;
-    final couponsAsync = ref.watch(activeCouponsProvider);
+    final facilityId = _effectiveFacilityId;
+    final couponsAsync = facilityId == null
+        ? ref.watch(activeCouponsProvider)
+        : ref.watch(activeCouponsForFacilityProvider(facilityId));
     final originalTotal = widget.totalPrice ?? 0;
     final discountAmount = _discountAmount(originalTotal);
     final totalAfterDiscount = (originalTotal - discountAmount).clamp(0, double.infinity).toDouble();
@@ -431,6 +461,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                               TextField(
                                 controller: _couponCodeCtrl,
                                 textCapitalization: TextCapitalization.characters,
+                                onChanged: _handleCouponTextChanged,
                                 decoration: InputDecoration(
                                   hintText: 'Enter coupon code',
                                   suffixIcon: _appliedCoupon == null
@@ -479,6 +510,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                 child: TextField(
                                   controller: _couponCodeCtrl,
                                   textCapitalization: TextCapitalization.characters,
+                                  onChanged: _handleCouponTextChanged,
                                   decoration: InputDecoration(
                                     hintText: 'Enter coupon code',
                                     suffixIcon: _appliedCoupon == null

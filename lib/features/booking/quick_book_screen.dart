@@ -52,7 +52,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
   @override
   void initState() {
     super.initState();
-    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted && !_processing) {
         ref.invalidate(
           liveSlotAvailabilityWithDiagnosticsProvider(
@@ -138,7 +138,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
           : {'facility_id': _selectedFacilityId!},
       ...?_indoorOnly ? {'is_indoor': 'true'} : null,
       'page': '$_slotPage',
-      'page_size': '50',
+      'page_size': '100',
     };
   }
 
@@ -205,6 +205,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   first.facilityName,
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  '${first.sportType == 'billiard' ? 'Table' : 'Field'} ${first.courtNumber}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '${DateFormat('EEE, dd MMM').format(first.startAt)} • ${DateFormat('HH:mm').format(first.startAt)} - ${DateFormat('HH:mm').format(last.endAt)}',
@@ -270,6 +278,8 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             bookingIds: bookingIds,
             facilityId: int.tryParse(first.facilityId),
             facilityName: first.facilityName,
+            courtNumber: first.courtNumber,
+            courtLabel: first.sportType == 'billiard' ? 'Table' : 'Field',
             startAt: first.startAt,
             endAt: last.endAt,
             totalPrice: total,

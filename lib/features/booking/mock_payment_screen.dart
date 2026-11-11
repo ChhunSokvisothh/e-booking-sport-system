@@ -368,10 +368,11 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
           barrierLabel: 'payment-success',
           barrierColor: Colors.black.withValues(alpha: 0.32),
           transitionDuration: const Duration(milliseconds: 260),
-          pageBuilder: (_, _, _) {
-            return const _PaymentSuccessDialog(
+          pageBuilder: (dialogContext, _, _) {
+            return _PaymentSuccessDialog(
               title: 'Payment Successful',
               message: 'Your booking is confirmed and receipt is ready. Good luck and enjoy your game!',
+              onGoHome: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
             );
           },
           transitionBuilder: (context, animation, secondaryAnimation, child) {
@@ -899,10 +900,12 @@ class _PaymentSuccessDialog extends StatelessWidget {
   const _PaymentSuccessDialog({
     required this.title,
     required this.message,
+    required this.onGoHome,
   });
 
   final String title;
   final String message;
+  final VoidCallback onGoHome;
 
   @override
   Widget build(BuildContext context) {
@@ -944,6 +947,20 @@ class _PaymentSuccessDialog extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFF475569),
                 height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onGoHome,
+                icon: const Icon(Icons.home_rounded),
+                label: const Text('Back to Home'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
           ],

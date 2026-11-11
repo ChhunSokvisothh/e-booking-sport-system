@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -1048,18 +1050,101 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider);
   }
 
+  Future<LatLng?> _pickVenueLocation(LatLng initialLocation) {
+    LatLng selected = initialLocation;
+    return showDialog<LatLng>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Pin your venue location'),
+          content: SizedBox(
+            width: 560,
+            height: 380,
+            child: Column(
+              children: [
+                const Text('Tap the map to place or move the venue pin.'),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: initialLocation,
+                      initialZoom: 14,
+                      onTap: (_, point) => setDialogState(() => selected = point),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.ebookingsport.app',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: selected,
+                            width: 44,
+                            height: 44,
+                            child: const Icon(
+                              Icons.location_pin,
+                              size: 42,
+                              color: Color(0xFFE11D48),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const RichAttributionWidget(
+                        attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(selected),
+              child: const Text('Use this location'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showAddVenueDialog() async {
     final session = ref.read(authSessionProvider);
     if (session == null) {
       return;
     }
 
-    final nameCtrl = TextEditingController();
+    final api = ref.read(apiClientProvider);
+    Map<String, dynamic> ownerProfile = {};
+    try {
+      ownerProfile = await api.getMap('/api/auth/me/', token: session.token);
+    } catch (_) {
+      // Keep the form usable if the profile request is temporarily unavailable.
+    }
+    if (!mounted) return;
+
+    final nameCtrl = TextEditingController(
+      text: (ownerProfile['venue_name'] as String?) ?? '',
+    );
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descriptionCtrl = TextEditingController();
-    final latitudeCtrl = TextEditingController(text: '11.5564');
-    final longitudeCtrl = TextEditingController(text: '104.9282');
+    final phoneCtrl = TextEditingController(
+      text: (ownerProfile['contact_phone'] as String?) ?? '',
+    );
+    final openingHoursCtrl = TextEditingController();
+    LatLng selectedLocation = const LatLng(11.5564, 104.9282);
     bool isIndoor = false;
     String sportType = _sportTypes.first;
 
@@ -1083,7 +1168,21 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: locationCtrl,
-                      decoration: const InputDecoration(labelText: 'Location'),
+                      decoration: const InputDecoration(labelText: 'Address / area'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: 'Venue contact phone (optional)'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: openingHoursCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Opening hours (e.g. 08:00-22:00)',
+                        helperText: 'Use 24-hour time. This creates the bookable hourly slots.',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
@@ -1123,34 +1222,19 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: latitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Latitude',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: longitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Longitude',
-                            ),
-                          ),
-                        ),
-                      ],
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await _pickVenueLocation(selectedLocation);
+                        if (picked != null) {
+                          setDialogState(() => selectedLocation = picked);
+                        }
+                      },
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Choose location on map'),
+                    ),
+                    Text(
+                      '${selectedLocation.latitude.toStringAsFixed(5)}, ${selectedLocation.longitude.toStringAsFixed(5)}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 6),
                     SwitchListTile(
@@ -1192,8 +1276,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         'sport_type': sportType,
         'base_price_per_hour': priceCtrl.text,
         'description': descriptionCtrl.text,
-        'latitude': latitudeCtrl.text,
-        'longitude': longitudeCtrl.text,
+        'contact_phone': phoneCtrl.text,
+        'opening_hours': openingHoursCtrl.text,
+        'latitude': selectedLocation.latitude,
+        'longitude': selectedLocation.longitude,
         'is_indoor': isIndoor,
       }, token: session.token);
       final createdFacility = _facilityFromResponse(response);

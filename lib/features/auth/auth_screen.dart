@@ -60,7 +60,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               const SizedBox(height: 14),
               const Text(
-                r'USD $20.00 / month',
+                'USD \$20.00 / month',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 10),

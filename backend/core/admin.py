@@ -12,6 +12,7 @@ admin.site.register(ChatMessage)
 class OwnerApplicationAdmin(admin.ModelAdmin):
     list_display = ('venue_name', 'user', 'status', 'created_at', 'reviewed_at')
     list_filter = ('status',)
+    readonly_fields = ('status', 'reviewed_at', 'created_at')
 
 
 @admin.register(UserProfile)

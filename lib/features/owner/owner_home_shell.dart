@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -1048,138 +1050,205 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider);
   }
 
+  Future<LatLng?> _pickVenueLocation({
+    double latitude = 11.5564,
+    double longitude = 104.9282,
+  }) {
+    LatLng? selected;
+    final initial = LatLng(latitude, longitude);
+    return showDialog<LatLng>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Pin your venue on the map'),
+          content: SizedBox(
+            width: 520,
+            height: 340,
+            child: Column(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: FlutterMap(
+                      options: MapOptions(
+                        initialCenter: initial,
+                        initialZoom: 14,
+                        onTap: (_, point) => setDialogState(() => selected = point),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.example.my_project',
+                        ),
+                        if (selected != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: selected!,
+                                width: 44,
+                                height: 44,
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  color: Color(0xFFDC2626),
+                                  size: 42,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  selected == null
+                      ? 'Tap the map to place the venue pin.'
+                      : 'Selected: ${selected!.latitude.toStringAsFixed(6)}, ${selected!.longitude.toStringAsFixed(6)}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selected == null
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(selected),
+              child: const Text('Use this location'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showAddVenueDialog() async {
     final session = ref.read(authSessionProvider);
-    if (session == null) {
-      return;
-    }
+    if (session == null) return;
 
-    final nameCtrl = TextEditingController();
+    final isFirstVenue = _ownerRows?.isEmpty ?? true;
+    final registeredVenueName = (session.ownerVenueName ?? '').trim();
+    final nameCtrl = TextEditingController(
+      text: isFirstVenue ? registeredVenueName : '',
+    );
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descriptionCtrl = TextEditingController();
-    final latitudeCtrl = TextEditingController(text: '11.5564');
-    final longitudeCtrl = TextEditingController(text: '104.9282');
     bool isIndoor = false;
     String sportType = _sportTypes.first;
+    LatLng? selectedLocation;
 
     final created = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Add New Venue'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add New Venue'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isFirstVenue || registeredVenueName.isEmpty) ...[
                     TextField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Venue Name',
-                      ),
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Venue Name'),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: locationCtrl,
-                      decoration: const InputDecoration(labelText: 'Location'),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: sportType,
-                      decoration: const InputDecoration(
-                        labelText: 'Sport Type',
-                      ),
-                      items: _sportTypes
-                          .map(
-                            (item) => DropdownMenuItem<String>(
-                              value: item,
-                              child: Text(item.toUpperCase()),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() => sportType = value);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: priceCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Price Per Hour (USD)',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descriptionCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Description (optional)',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: latitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Latitude',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: longitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Longitude',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    SwitchListTile(
+                  ] else ...[
+                    ListTile(
                       contentPadding: EdgeInsets.zero,
-                      value: isIndoor,
-                      title: const Text('Indoor Venue'),
-                      onChanged: (value) =>
-                          setDialogState(() => isIndoor = value),
+                      leading: const Icon(Icons.storefront_outlined),
+                      title: Text(registeredVenueName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: const Text('Venue name from your owner registration'),
                     ),
                   ],
-                ),
+                  TextField(
+                    controller: locationCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Location / address'),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: sportType,
+                    decoration: const InputDecoration(labelText: 'Sport Type'),
+                    items: _sportTypes.map((item) => DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(item.toUpperCase()),
+                    )).toList(),
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => sportType = value);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Price Per Hour (USD)'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: descriptionCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Description (optional)'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final point = await _pickVenueLocation();
+                      if (point != null) setDialogState(() => selectedLocation = point);
+                    },
+                    icon: const Icon(Icons.map_outlined),
+                    label: Text(selectedLocation == null ? 'Select location on map' : 'Change map location'),
+                  ),
+                  if (selectedLocation != null)
+                    Text(
+                      'Pin selected: ${selectedLocation!.latitude.toStringAsFixed(5)}, ${selectedLocation!.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF047857)),
+                    ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: isIndoor,
+                    title: const Text('Indoor Venue'),
+                    onChanged: (value) => setDialogState(() => isIndoor = value),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('Create Venue'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (nameCtrl.text.trim().isEmpty ||
+                    locationCtrl.text.trim().isEmpty ||
+                    priceCtrl.text.trim().isEmpty ||
+                    selectedLocation == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Enter the venue details and select its map location.')),
+                  );
+                  return;
+                }
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Create Venue'),
+            ),
+          ],
+        ),
+      ),
     );
 
     if (created != true) {
+      nameCtrl.dispose();
+      locationCtrl.dispose();
+      priceCtrl.dispose();
+      descriptionCtrl.dispose();
       return;
     }
 
@@ -1187,39 +1256,33 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     try {
       final api = ref.read(apiClientProvider);
       final response = await api.postJson('/api/facilities/owner/', {
-        'name': nameCtrl.text,
-        'location_name': locationCtrl.text,
+        'name': nameCtrl.text.trim(),
+        'location_name': locationCtrl.text.trim(),
         'sport_type': sportType,
-        'base_price_per_hour': priceCtrl.text,
-        'description': descriptionCtrl.text,
-        'latitude': latitudeCtrl.text,
-        'longitude': longitudeCtrl.text,
+        'base_price_per_hour': priceCtrl.text.trim(),
+        'description': descriptionCtrl.text.trim(),
+        'latitude': selectedLocation!.latitude,
+        'longitude': selectedLocation!.longitude,
         'is_indoor': isIndoor,
       }, token: session.token);
       final createdFacility = _facilityFromResponse(response);
-      if (createdFacility != null) {
-        _upsertOwnerRow(createdFacility);
-      }
+      if (createdFacility != null) _upsertOwnerRow(createdFacility);
       _invalidateRelatedVenueProviders();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Venue created successfully.')),
       );
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
       );
     } finally {
-      if (mounted) {
-        setState(() => _savingNewVenue = false);
-      }
+      nameCtrl.dispose();
+      locationCtrl.dispose();
+      priceCtrl.dispose();
+      descriptionCtrl.dispose();
+      if (mounted) setState(() => _savingNewVenue = false);
     }
   }
 
@@ -1307,12 +1370,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: facility.basePricePerHour.toStringAsFixed(2),
     );
     final descriptionCtrl = TextEditingController(text: facility.description);
-    final latitudeCtrl = TextEditingController(
-      text: facility.latitude.toString(),
-    );
-    final longitudeCtrl = TextEditingController(
-      text: facility.longitude.toString(),
-    );
+    LatLng selectedLocation = LatLng(facility.latitude, facility.longitude);
     final imageUrlCtrl = TextEditingController(text: facility.imageUrl ?? '');
     bool isIndoor = facility.isIndoor;
     String sportType = _sportTypes.contains(facility.sportType)
@@ -1379,34 +1437,20 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: latitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Latitude',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: longitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Longitude',
-                          ),
-                        ),
-                      ),
-                    ],
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final point = await _pickVenueLocation(
+                        latitude: selectedLocation.latitude,
+                        longitude: selectedLocation.longitude,
+                      );
+                      if (point != null) setDialogState(() => selectedLocation = point);
+                    },
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Select location on map'),
+                  ),
+                  Text(
+                    '${selectedLocation.latitude.toStringAsFixed(6)}, ${selectedLocation.longitude.toStringAsFixed(6)}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(height: 6),
                   SwitchListTile(
@@ -1449,8 +1493,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             'base_price_per_hour': priceCtrl.text,
             'description': descriptionCtrl.text,
             'image_url': imageUrlCtrl.text,
-            'latitude': latitudeCtrl.text,
-            'longitude': longitudeCtrl.text,
+            'latitude': selectedLocation.latitude,
+            'longitude': selectedLocation.longitude,
             'is_indoor': isIndoor,
           }, token: session.token);
       final updatedFacility = _facilityFromResponse(response);

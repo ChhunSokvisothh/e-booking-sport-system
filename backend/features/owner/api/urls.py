@@ -7,9 +7,12 @@ from features.owner.api.views import (
     owner_coupons_endpoint,
     owner_facilities_endpoint,
     owner_facility_detail_endpoint,
+    owner_applications_admin_endpoint,
 )
 
 urlpatterns = [
+    path('api/admin/owner-applications/', owner_applications_admin_endpoint, name='admin-owner-applications'),
+    path('api/admin/owner-applications/<int:application_id>/', owner_applications_admin_endpoint, name='admin-owner-application-detail'),
     path('api/owner/analytics/', owner_analytics_endpoint, name='owner-analytics'),
     path('api/coupons/active/', active_coupons_endpoint, name='active-coupons-endpoint'),
     path('api/coupons/owner/', owner_coupons_endpoint, name='owner-coupons-endpoint'),

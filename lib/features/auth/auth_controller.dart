@@ -60,7 +60,6 @@ class AuthController {
   Future<void> ownerSignUp({
     required String email,
     required String password,
-    required String venueName,
     required String contactPhone,
     required String paymentProvider,
     required String paymentChannel,
@@ -70,7 +69,6 @@ class AuthController {
         .postJson('/api/auth/owner-signup/', {
           'email': email,
           'password': password,
-          'venue_name': venueName,
           'contact_phone': contactPhone,
           'payment_provider': paymentProvider,
           'payment_channel': paymentChannel,

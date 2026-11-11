@@ -205,6 +205,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   first.facilityName,
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  '${first.sportType == 'billiard' ? 'Table' : 'Field'} ${first.courtNumber}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '${DateFormat('EEE, dd MMM').format(first.startAt)} • ${DateFormat('HH:mm').format(first.startAt)} - ${DateFormat('HH:mm').format(last.endAt)}',
@@ -270,6 +278,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             bookingIds: bookingIds,
             facilityId: int.tryParse(first.facilityId),
             facilityName: first.facilityName,
+            courtNumber: first.courtNumber,
             startAt: first.startAt,
             endAt: last.endAt,
             totalPrice: total,

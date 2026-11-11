@@ -27,6 +27,7 @@ def _slot_payload(
     current_bookings,
     max_bookings,
     is_open,
+    court_number=1,
     slot_version=1,
     reservation_hold_until=None,
     booked_by_me=False,
@@ -48,6 +49,7 @@ def _slot_payload(
         'facility_id': str(facility.id),
         'facility_name': facility.name,
         'sport_type': facility.sport_type,
+        'court_number': court_number,
         'start_at': start_at,
         'end_at': end_at,
         'current_bookings': current_bookings,
@@ -103,23 +105,48 @@ def _ensure_rolling_slot_window():
                         'end_time': next_cursor.timetz().replace(tzinfo=None),
                         'duration': timedelta(hours=1),
                         'max_bookings': int(slot.max_bookings or 1),
+                        'court_number': int(slot.court_number or 1),
                     }
                 )
                 cursor = next_cursor
 
-        if not templates:
-            # Fallback timetable when no seed data exists for a facility.
+        if not templates and not facility.opening_hours and facility.owner_user_id is None:
+            # Preserve the legacy timetable for unowned seed venues only.
             for hour in [8, 10, 12, 14, 16, 18, 20]:
                 start_time = datetime.strptime(f'{hour:02d}:00', '%H:%M').time()
                 end_time = datetime.strptime(f'{hour + 2:02d}:00', '%H:%M').time()
-                templates.append(
-                    {
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration': timedelta(hours=2),
-                        'max_bookings': 3,
-                    }
-                )
+                templates.append({
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': timedelta(hours=2),
+                    'max_bookings': 3,
+                })
+
+        if facility.opening_hours:
+            # Opening hours are authoritative for every venue, including legacy
+            # seed venues that still have an old timetable in core_timeslot.
+            templates = []
+            try:
+                opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
+                opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+                opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+                opening_cursor = datetime.combine(window_start.date(), opening_start)
+                closing = datetime.combine(window_start.date(), opening_end)
+                for court_number in range(1, max(1, int(facility.court_count or 1)) + 1):
+                    cursor = opening_cursor
+                    while cursor + timedelta(hours=1) <= closing:
+                        next_cursor = cursor + timedelta(hours=1)
+                        templates.append({
+                            'start_time': cursor.time(),
+                            'end_time': next_cursor.time(),
+                            'duration': timedelta(hours=1),
+                            'max_bookings': 1,
+                            'court_number': court_number,
+                        })
+                        cursor = next_cursor
+            except (ValueError, TypeError):
+                # Invalid hours must not create misleading bookable slots.
+                templates = []
 
         template_map[facility.id] = templates
 
@@ -145,6 +172,58 @@ def _ensure_rolling_slot_window():
         TimeSlot.objects.filter(id__in=protected_ids).update(is_open=False, reservation_hold_until=None)
 
     for facility in all_facilities:
+        templates = template_map.get(facility.id) or []
+
+        # Remove stale, unbooked slots that fall outside the venue's configured
+        # hours (for example, old 16:00-22:00 seed slots on an 08:00-16:00 venue).
+        if facility.opening_hours:
+            expected_keys = set()
+            for day_offset in range(BOOKING_WINDOW_DAYS + 1):
+                target_date = (window_start + timedelta(days=day_offset)).date()
+                for template in templates:
+                    expected_keys.add((
+                        target_date,
+                        template['start_time'],
+                        template['end_time'],
+                        template.get('court_number', 1),
+                    ))
+
+            current_slots = TimeSlot.objects.filter(
+                facility=facility,
+                start_at__gte=window_start,
+                start_at__lt=window_end,
+            ).annotate(booking_count=models.Count('bookings'))
+            stale_unbooked_ids = []
+            stale_booked_ids = []
+            for slot in current_slots:
+                local_start = slot.start_at.astimezone(local_tz)
+                local_end = slot.end_at.astimezone(local_tz)
+                key = (
+                    local_start.date(),
+                    local_start.time().replace(tzinfo=None),
+                    local_end.time().replace(tzinfo=None),
+                    slot.court_number,
+                )
+                if key in expected_keys:
+                    continue
+                if slot.booking_count:
+                    stale_booked_ids.append(slot.id)
+                else:
+                    stale_unbooked_ids.append(slot.id)
+
+            if stale_unbooked_ids:
+                TimeSlot.objects.filter(id__in=stale_unbooked_ids).delete()
+                try:
+                    supabase = _get_supabase_client()
+                    supabase.table(settings.SUPABASE_TIMESLOT_TABLE).delete().in_('id', stale_unbooked_ids).execute()
+                except Exception:
+                    pass
+            if stale_booked_ids:
+                TimeSlot.objects.filter(id__in=stale_booked_ids).update(
+                    is_open=False,
+                    reservation_hold_until=None,
+                )
+
         # Normalize existing future slots to 1-hour granularity for booking UX.
         split_candidates = list(
             TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
@@ -167,6 +246,7 @@ def _ensure_rolling_slot_window():
                         facility=facility,
                         start_at=cursor,
                         end_at=cursor + timedelta(hours=1),
+                        court_number=slot.court_number,
                         max_bookings=slot.max_bookings,
                         current_bookings=0,
                         is_open=True,
@@ -187,22 +267,30 @@ def _ensure_rolling_slot_window():
             except Exception:
                 pass
 
-        templates = template_map.get(facility.id) or []
         if not templates:
             continue
 
-        existing_dates = {
-            slot.start_at.astimezone(timezone.get_current_timezone()).date()
-            for slot in TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
+        existing_slot_keys = {
+            (
+                slot.start_at.astimezone(local_tz).date(),
+                slot.start_at.astimezone(local_tz).time().replace(tzinfo=None),
+                slot.end_at.astimezone(local_tz).time().replace(tzinfo=None),
+                slot.court_number,
+            )
+            for slot in TimeSlot.objects.filter(
+                facility=facility,
+                start_at__gte=window_start,
+                start_at__lt=window_end,
+            )
         }
 
         created_slots = []
         for day_offset in range(BOOKING_WINDOW_DAYS + 1):
             target_date = (window_start + timedelta(days=day_offset)).date()
-            if target_date in existing_dates:
-                continue
-
             for template in templates:
+                slot_key = (target_date, template['start_time'], template['end_time'], template.get('court_number', 1))
+                if slot_key in existing_slot_keys:
+                    continue
                 start_dt = timezone.make_aware(datetime.combine(target_date, template['start_time']))
                 end_dt = timezone.make_aware(datetime.combine(target_date, template['end_time']))
                 if end_dt <= start_dt:
@@ -217,12 +305,31 @@ def _ensure_rolling_slot_window():
                         current_bookings=0,
                         is_open=True,
                         reservation_hold_until=None,
+                        court_number=template.get('court_number', 1),
                     )
                 )
 
         if created_slots:
-            TimeSlot.objects.bulk_create(created_slots)
-            _sync_generated_slots_to_supabase_async(created_slots)
+            # Multiple API workers can refresh the same rolling window at once.
+            # Let the database uniqueness constraint discard duplicate inserts.
+            TimeSlot.objects.bulk_create(created_slots, ignore_conflicts=True)
+
+            # ignore_conflicts does not populate primary keys on inserted objects.
+            # Re-fetch the persisted rows before mirroring them to Supabase.
+            generated_keys = {
+                (slot.start_at, slot.end_at, slot.court_number)
+                for slot in created_slots
+            }
+            persisted_slots = [
+                slot
+                for slot in TimeSlot.objects.filter(
+                    facility=facility,
+                    start_at__gte=window_start,
+                    start_at__lt=window_end,
+                )
+                if (slot.start_at, slot.end_at, slot.court_number) in generated_keys
+            ]
+            _sync_generated_slots_to_supabase_async(persisted_slots)
 
 
 def _ensure_rolling_slot_window_cached():

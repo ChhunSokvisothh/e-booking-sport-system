@@ -382,6 +382,25 @@ class VenueDetailScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                if (hasCoordinates) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _openVenueDirections(context),
+                      icon: const Icon(Icons.directions_rounded),
+                      label: const Text('Get directions'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _ink,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -390,6 +409,32 @@ class VenueDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openVenueDirections(BuildContext context) async {
+    final destination = '${facility.latitude},${facility.longitude}';
+    final mapsUri = Uri.https(
+      'www.google.com',
+      '/maps/dir/',
+      {
+        'api': '1',
+        'destination': destination,
+        'travelmode': 'driving',
+      },
+    );
+
+    final opened = await launchUrl(
+      mapsUri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open a maps app on this device.'),
+        ),
+      );
+    }
   }
 
   Widget _buildDetailsCard({
@@ -461,29 +506,36 @@ class VenueDetailScreen extends ConsumerWidget {
             spacing: 18,
             runSpacing: 10,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFE6A700),
-                    size: 21,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    rating.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: _ink,
+              if (rating > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFE6A700),
+                      size: 21,
                     ),
-                  ),
-                  const SizedBox(width: 5),
-                  const Text(
-                    'rating',
-                    style: TextStyle(color: _muted),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 5),
+                    Text(
+                      rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text('rating', style: TextStyle(color: _muted)),
+                  ],
+                )
+              else
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.storefront_outlined, color: _muted, size: 20),
+                    SizedBox(width: 5),
+                    Text('No reviews yet', style: TextStyle(color: _muted)),
+                  ],
+                ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

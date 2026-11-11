@@ -1,12 +1,18 @@
+from datetime import datetime
+import base64
+import uuid
 from decimal import Decimal
 
-from django.db import models
+from django.conf import settings
+from django.db import IntegrityError, models, transaction
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from supabase import create_client
 
 from core.models import Booking, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
@@ -31,7 +37,40 @@ def active_coupons_endpoint(request):
         archived_at__isnull=True,
         starts_at__lte=now,
         ends_at__gte=now,
-    ).order_by('-discount_percent', 'code')
+    )
+
+    # Owner coupons are venue-specific. Checkout must request coupons for the
+    # venue being booked; without a venue context, expose only global coupons.
+    facility_id_raw = (request.query_params.get('facility_id') or '').strip()
+    if facility_id_raw:
+        try:
+            facility_id = int(facility_id_raw)
+        except (TypeError, ValueError):
+            return Response({'error': 'facility_id must be a valid venue ID.'}, status=status.HTTP_400_BAD_REQUEST)
+        if facility_id <= 0:
+            return Response({'error': 'facility_id must be a valid venue ID.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        facility = Facility.objects.filter(
+            id=facility_id,
+            is_active=True,
+            archived_at__isnull=True,
+        ).only('owner_user_id').first()
+        if facility is None:
+            return Response({'error': 'Venue not found.'}, status=status.HTTP_404_NOT_FOUND)
+        qs = qs.filter(
+            models.Q(owner_user_id__isnull=True)
+            | models.Q(owner_user_id=facility.owner_user_id)
+        )
+    else:
+        qs = qs.filter(owner_user_id__isnull=True)
+
+    # Checkout can validate one exact code instead of depending on a
+    # potentially stale client-side list of coupons.
+    code = (request.query_params.get('code') or '').strip().upper()
+    if code:
+        qs = qs.filter(code=code)
+
+    qs = qs.order_by('-discount_percent', 'code')
     return Response(CouponSerializer(qs, many=True).data)
 
 
@@ -73,6 +112,58 @@ def owner_analytics_endpoint(request):
     })
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsVenueOwner])
+def owner_venue_image_upload(request):
+    if not _is_owner_user(request.user):
+        return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    filename = (request.data.get('file_name') or '').strip()
+    content_type = (request.data.get('content_type') or '').strip().lower()
+    encoded = request.data.get('image_base64') or ''
+    allowed = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+    }
+    extension = allowed.get(content_type)
+    if not extension or not filename:
+        return Response({'error': 'Upload a JPG, PNG, or WebP image.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except Exception:
+        return Response({'error': 'The image upload payload is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not raw or len(raw) > 1800 * 1024:
+        return Response({'error': 'Each venue image must be smaller than 1.8 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return Response({'error': 'Venue image storage is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    path = f'{_uuid_from_user(request.user)}/{uuid.uuid4().hex}.{extension}'
+    try:
+        storage = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+        ).storage.from_('venue-photos')
+        storage.upload(
+            path,
+            raw,
+            file_options={'content-type': content_type, 'upsert': 'false'},
+        )
+        public_url = storage.get_public_url(path)
+        if not isinstance(public_url, str):
+            public_url = public_url.get('publicUrl') or public_url.get('public_url')
+        if not public_url:
+            raise RuntimeError('Supabase did not return a public image URL.')
+    except Exception:
+        return Response(
+            {'error': 'Could not upload the venue image. Check that the public venue-photos bucket exists.'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    return Response({'url': public_url, 'path': path}, status=status.HTTP_201_CREATED)
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_facilities_endpoint(request):
@@ -87,9 +178,11 @@ def owner_facilities_endpoint(request):
         archived_from_raw = (request.query_params.get('archived_from') or '').strip()
         archived_to_raw = (request.query_params.get('archived_to') or '').strip()
         archive_cutoff = _facility_archive_cutoff(now)
+        # Owners see only venues they created. Unowned/demo venues belong in
+        # the public catalogue, not in a new owner's management dashboard.
         owner_scope = Facility.objects.all()
         if not request.user.is_superuser:
-            owner_scope = owner_scope.filter(models.Q(owner_user_id=owner_uuid) | models.Q(owner_user_id__isnull=True))
+            owner_scope = owner_scope.filter(owner_user_id=owner_uuid)
 
         # Purge archived facilities older than retention window when they have no bookings.
         stale_ids = list(
@@ -133,7 +226,8 @@ def owner_facilities_endpoint(request):
     sport_type = (request.data.get('sport_type') or '').strip().lower()
     location_name = (request.data.get('location_name') or '').strip()
     description = (request.data.get('description') or '').strip()
-    image_url = (request.data.get('image_url') or '').strip()
+    contact_phone = (request.data.get('contact_phone') or '').strip()
+    opening_hours = (request.data.get('opening_hours') or '').strip()
     is_indoor_raw = request.data.get('is_indoor', False)
     if isinstance(is_indoor_raw, bool):
         is_indoor = is_indoor_raw
@@ -143,13 +237,31 @@ def owner_facilities_endpoint(request):
         is_indoor = bool(is_indoor_raw)
 
     base_price_raw = request.data.get('base_price_per_hour')
-    latitude_raw = request.data.get('latitude', 11.5564)
-    longitude_raw = request.data.get('longitude', 104.9282)
+    try:
+        court_count = int(request.data.get('court_count', 1))
+    except (TypeError, ValueError):
+        return Response({'error': 'court_count must be a whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if court_count < 1 or court_count > 100:
+        return Response({'error': 'court_count must be between 1 and 100.'}, status=status.HTTP_400_BAD_REQUEST)
+    latitude_raw = request.data.get('latitude')
+    longitude_raw = request.data.get('longitude')
 
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
     if not location_name:
         return Response({'error': 'location_name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not opening_hours:
+        return Response({'error': 'opening_hours is required (for example, 08:00-22:00)'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
+        opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+        opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+        start_minutes = opening_start.hour * 60 + opening_start.minute
+        end_minutes = opening_end.hour * 60 + opening_end.minute
+        if end_minutes - start_minutes < 60:
+            raise ValueError
+    except (ValueError, TypeError):
+        return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
     if sport_type not in SportType.values:
         return Response({'error': f'sport_type must be one of: {", ".join(SportType.values)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -165,6 +277,8 @@ def owner_facilities_endpoint(request):
         longitude = float(longitude_raw)
     except Exception:
         return Response({'error': 'latitude and longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return Response({'error': 'Selected map location is outside valid coordinates.'}, status=status.HTTP_400_BAD_REQUEST)
 
     facility = Facility.objects.create(
         name=name,
@@ -175,11 +289,17 @@ def owner_facilities_endpoint(request):
         latitude=latitude,
         longitude=longitude,
         base_price_per_hour=base_price_per_hour,
-        image_url=image_url,
+        court_count=court_count,
+        rating=Decimal('0.0'),
+        contact_phone=contact_phone,
+        opening_hours=opening_hours,
+        image_url=(request.data.get('image_url') or '').strip(),
+        gallery_image_urls=request.data.get('gallery_image_urls') if isinstance(request.data.get('gallery_image_urls'), list) else [],
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,
         archived_at=None,
     )
+    cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_created', 'facility': FacilitySerializer(facility).data}, status=status.HTTP_201_CREATED)
 
 
@@ -195,8 +315,8 @@ def owner_facility_detail_endpoint(request, facility_id):
         return Response({'error': 'Facility not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     owner_uuid = _uuid_from_user(request.user)
-    if facility.owner_user_id and (facility.owner_user_id != owner_uuid) and (not request.user.is_superuser):
-        return Response({'error': 'You can only edit your own venues.'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.is_superuser and facility.owner_user_id != owner_uuid:
+        return Response({'error': 'You can only manage venues that belong to your account.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'DELETE':
         facility.is_active = False
@@ -234,6 +354,25 @@ def owner_facility_detail_endpoint(request, facility_id):
     if 'description' in request.data:
         facility.description = (request.data.get('description') or '').strip()
         update_fields.append('description')
+
+    if 'contact_phone' in request.data:
+        facility.contact_phone = (request.data.get('contact_phone') or '').strip()
+        update_fields.append('contact_phone')
+
+    if 'opening_hours' in request.data:
+        opening_hours = (request.data.get('opening_hours') or '').strip()
+        try:
+            opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
+            opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+            opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+            start_minutes = opening_start.hour * 60 + opening_start.minute
+            end_minutes = opening_end.hour * 60 + opening_end.minute
+            if end_minutes - start_minutes < 60:
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
+        facility.opening_hours = opening_hours
+        update_fields.append('opening_hours')
 
     if 'image_url' in request.data:
         facility.image_url = (request.data.get('image_url') or '').strip()
@@ -278,6 +417,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.latitude = float(request.data.get('latitude'))
         except Exception:
             return Response({'error': 'latitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -90 <= facility.latitude <= 90:
+            return Response({'error': 'latitude must be between -90 and 90'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('latitude')
 
     if 'longitude' in request.data:
@@ -285,6 +426,8 @@ def owner_facility_detail_endpoint(request, facility_id):
             facility.longitude = float(request.data.get('longitude'))
         except Exception:
             return Response({'error': 'longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        if not -180 <= facility.longitude <= 180:
+            return Response({'error': 'longitude must be between -180 and 180'}, status=status.HTTP_400_BAD_REQUEST)
         update_fields.append('longitude')
 
     if len(update_fields) == 1:
@@ -293,13 +436,22 @@ def owner_facility_detail_endpoint(request, facility_id):
     facility.owner_user_id = owner_uuid
     update_fields.append('owner_user_id')
     facility.save(update_fields=update_fields)
+    if 'opening_hours' in update_fields:
+        # Rebuild future unbooked slots from the new opening hours. Never touch booked slots.
+        stale_slots = (
+            TimeSlot.objects.filter(facility=facility, start_at__gte=timezone.now())
+            .annotate(booking_count=models.Count('bookings'))
+            .filter(booking_count=0)
+        )
+        stale_slots.delete()
+        cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_updated', 'facility': FacilitySerializer(facility).data})
 
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_coupons_endpoint(request):
-    if not (request.user.is_staff or request.user.is_superuser):
+    if not _is_owner_user(request.user):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
@@ -345,19 +497,37 @@ def owner_coupons_endpoint(request):
         return Response({'error': 'discount_percent must be between 0 and 100'}, status=status.HTTP_400_BAD_REQUEST)
 
     owner_uuid = _uuid_from_user(request.user)
-    coupon, created = Coupon.objects.update_or_create(
-        code=code,
-        defaults={
-            'title': title,
-            'description': description,
-            'discount_percent': discount_percent,
-            'starts_at': starts_at,
-            'ends_at': ends_at,
-            'is_active': True,
-            'archived_at': None,
-            'owner_user_id': owner_uuid,
-        },
-    )
+    try:
+        with transaction.atomic():
+            coupon = Coupon.objects.select_for_update().filter(code=code).first()
+            if coupon is not None and coupon.owner_user_id != owner_uuid and not request.user.is_superuser:
+                return Response(
+                    {'error': 'This coupon code is already in use. Choose a different code.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            created = coupon is None
+            if created:
+                coupon = Coupon(
+                    code=code,
+                    owner_user_id=owner_uuid,
+                )
+
+            coupon.title = title
+            coupon.description = description
+            coupon.discount_percent = discount_percent
+            coupon.starts_at = starts_at
+            coupon.ends_at = ends_at
+            coupon.is_active = True
+            coupon.archived_at = None
+            if coupon.owner_user_id is None or request.user.is_superuser:
+                coupon.owner_user_id = owner_uuid
+            coupon.save()
+    except IntegrityError:
+        return Response(
+            {'error': 'This coupon code is already in use. Choose a different code.'},
+            status=status.HTTP_409_CONFLICT,
+        )
 
     return Response(
         {
@@ -371,7 +541,7 @@ def owner_coupons_endpoint(request):
 @api_view(['PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_coupon_detail_endpoint(request, coupon_id):
-    if not (request.user.is_staff or request.user.is_superuser):
+    if not _is_owner_user(request.user):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
@@ -397,6 +567,11 @@ def owner_coupon_detail_endpoint(request, coupon_id):
         coupon.is_active = is_active
         update_fields = ['is_active', 'updated_at']
         if is_active:
+            if coupon.ends_at <= now:
+                return Response(
+                    {'error': 'This coupon has expired. Create a new coupon with a future end date.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if coupon.starts_at > now:
                 coupon.starts_at = now
                 update_fields.append('starts_at')
@@ -418,3 +593,4 @@ def owner_coupon_detail_endpoint(request, coupon_id):
             'retention_days': COUPON_ARCHIVE_RETENTION_DAYS,
         }
     )
+

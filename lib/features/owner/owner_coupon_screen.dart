@@ -65,6 +65,7 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
   void _invalidateRelatedCouponProviders() {
     ref.invalidate(ownerCouponsProvider);
     ref.invalidate(activeCouponsProvider);
+    ref.invalidate(activeCouponsForFacilityProvider);
   }
 
   @override
@@ -150,8 +151,10 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
           'title': _titleCtrl.text.trim(),
           'description': _descriptionCtrl.text.trim(),
           'discount_percent': discount,
-          'starts_at': _startsAt.toIso8601String(),
-          'ends_at': _endsAt.toIso8601String(),
+          // Django stores UTC timestamps. DateTimePicker values are local;
+          // send explicit UTC offsets so coupons activate at the time the owner selected.
+          'starts_at': _startsAt.toUtc().toIso8601String(),
+          'ends_at': _endsAt.toUtc().toIso8601String(),
         },
         token: session.token,
       );
@@ -171,8 +174,9 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
       if (!mounted) {
         return;
       }
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to save coupon right now.')),
+        SnackBar(content: Text(message.isEmpty ? 'Unable to save coupon right now.' : message)),
       );
     } finally {
       if (mounted) {
@@ -196,6 +200,13 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
         _upsertCoupon(coupon);
       }
       _invalidateRelatedCouponProviders();
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Unable to update coupon.' : message)),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _processingCouponId = null);
@@ -212,11 +223,11 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete coupon?'),
-        content: const Text('This action cannot be undone.'),
+        title: const Text('Archive coupon?'),
+        content: const Text('The coupon will stop applying immediately, while its history stays available in your records.'),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Archive')),
         ],
       ),
     );
@@ -233,6 +244,13 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
         _upsertCoupon(coupon);
       }
       _invalidateRelatedCouponProviders();
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Unable to delete coupon.' : message)),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _processingCouponId = null);

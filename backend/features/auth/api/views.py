@@ -2,6 +2,9 @@
 import re
 import uuid
 import logging
+from decimal import Decimal, InvalidOperation
+
+from django.db import IntegrityError, transaction
 
 from django.contrib.auth import authenticate
 from django.utils import timezone
@@ -25,21 +28,6 @@ from .avatar_storage import (
     delete_avatar,
 )
 
-def _ensure_owner_access(user):
-    application = OwnerApplication.objects.filter(user_id=user.id).first()
-    if application is None:
-        return
-    fields = []
-    if application.status != OwnerApplication.Status.APPROVED:
-        application.status = OwnerApplication.Status.APPROVED
-        application.reviewed_at = timezone.now()
-        fields.extend(['status', 'reviewed_at'])
-    if fields:
-        application.save(update_fields=fields)
-    if not user.is_staff:
-        user.is_staff = True
-        user.save(update_fields=['is_staff'])
-
 def _auth_payload(user, token):
     owner_status = (
         OwnerApplication.objects
@@ -54,6 +42,7 @@ def _auth_payload(user, token):
         'email': user.email,
         'role': _role_for_user(user),
         'owner_status': owner_status,
+        'is_superuser': bool(user.is_superuser),
     }
 
 @api_view(['POST'])
@@ -74,33 +63,75 @@ def auth_signup(request):
     return Response(_auth_payload(user, token), status=status.HTTP_201_CREATED)
 
 
+OWNER_REGISTRATION_FEE = Decimal('20.00')
+OWNER_PAYMENT_METHODS = {
+    'Bakong QR': 'local_bank',
+    'ABA Bank': 'local_bank',
+    'Visa': 'card',
+    'Mastercard': 'card',
+    'PayPal': 'international_bank',
+}
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def owner_signup(request):
+    """Create an owner account only after the simulated registration payment succeeds."""
     email = (request.data.get('email') or '').strip().lower()
     password = (request.data.get('password') or '').strip()
-    venue_name = (request.data.get('venue_name') or '').strip()
+    venue_name = ''
     phone = (request.data.get('contact_phone') or '').strip()
-    if not email or not password or not venue_name:
-        return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+    payment_provider = (request.data.get('payment_provider') or '').strip()
+    payment_channel = (request.data.get('payment_channel') or '').strip().lower()
+    try:
+        paid_amount = Decimal(str(request.data.get('amount')))
+    except (InvalidOperation, TypeError, ValueError):
+        paid_amount = None
+
+    if not email or not password:
+        return Response({'error': 'email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _rate_limit_check(
+        request,
+        action='owner-signup',
+        identifier='owner-registration',
+        limit=5,
+        window_seconds=3600,
+    ):
+        return Response(
+            {'error': 'Too many owner registration attempts. Please try again later.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
     if len(password) < 8:
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
-    user = User.objects.create_user(username=email, email=email, password=password)
-    user.is_staff = True
-    user.save(update_fields=['is_staff'])
-    OwnerApplication.objects.create(
-        user=user,
-        venue_name=venue_name,
-        contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
-    )
-    token, _ = Token.objects.get_or_create(user=user)
+    if OWNER_PAYMENT_METHODS.get(payment_provider) != payment_channel:
+        return Response({'error': 'Choose a valid payment method to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+    if paid_amount != OWNER_REGISTRATION_FEE:
+        return Response({'error': 'Owner registration payment must be exactly $20.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # This is deliberately a simulated payment for the prototype. A real gateway
+    # must replace this client-triggered confirmation before production.
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(username=email, email=email, password=password)
+            OwnerApplication.objects.create(
+                user=user,
+                venue_name=venue_name,
+                contact_phone=phone,
+                status=OwnerApplication.Status.APPROVED,
+                reviewed_at=timezone.now(),
+            )
+            token, _ = Token.objects.get_or_create(user=user)
+    except IntegrityError:
+        return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
     return Response({
         **_auth_payload(user, token),
-        'message': 'Admin venue account created. You can now use the owner dashboard.',
+        'message': 'Simulated owner registration payment successful.',
+        'payment_status': 'mock_paid',
+        'payment_provider': payment_provider,
+        'payment_channel': payment_channel,
+        'amount': str(OWNER_REGISTRATION_FEE),
+        'currency': 'USD',
     }, status=status.HTTP_201_CREATED)
 
 
@@ -122,7 +153,6 @@ def auth_login(request):
     if user is None:
         return Response({'error': 'invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    _ensure_owner_access(user)
     token, _ = Token.objects.get_or_create(user=user)
     return Response(_auth_payload(user, token))
 
@@ -150,6 +180,15 @@ def auth_me(request):
             'email': request.user.email,
             'role': _role_for_user(request.user),
             'owner_status': owner_status,
+            'is_superuser': bool(request.user.is_superuser),
+            'venue_name': (
+                OwnerApplication.objects.filter(user_id=request.user.id)
+                .values_list('venue_name', flat=True).first()
+            ),
+            'contact_phone': (
+                OwnerApplication.objects.filter(user_id=request.user.id)
+                .values_list('contact_phone', flat=True).first()
+            ),
         }
     )
 

@@ -103,6 +103,7 @@ class TimeSlot(models.Model):
     facility = models.ForeignKey(Facility, on_delete=models.CASCADE, related_name='time_slots')
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
+    court_number = models.PositiveIntegerField(default=1)
 
     max_bookings = models.PositiveIntegerField(default=1)
     current_bookings = models.PositiveIntegerField(default=0)
@@ -124,7 +125,7 @@ class TimeSlot(models.Model):
         ordering = ['start_at']
         constraints = [
             models.CheckConstraint(check=models.Q(end_at__gt=models.F('start_at')), name='slot_end_after_start'),
-            models.UniqueConstraint(fields=['facility', 'start_at', 'end_at'], name='unique_slot_per_facility_time'),
+            models.UniqueConstraint(fields=['facility', 'start_at', 'end_at', 'court_number'], name='unique_slot_per_facility_time_court'),
         ]
         indexes = [
             models.Index(fields=['facility', 'start_at']),
@@ -198,6 +199,8 @@ class Booking(models.Model):
     chatbot_session_id = models.CharField(max_length=64, blank=True)
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     refunded_at = models.DateTimeField(null=True, blank=True)
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    checked_in_by = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='booking_checkins')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

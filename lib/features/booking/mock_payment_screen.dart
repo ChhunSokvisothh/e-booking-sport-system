@@ -9,17 +9,21 @@ import '../auth/data/auth_session.dart';
 import '../../shared/models/models.dart';
 import '../facility/facility_providers.dart';
 import 'booking_providers.dart';
+import 'payment_method_selector.dart';
 
 class MockPaymentScreen extends ConsumerStatefulWidget {
   const MockPaymentScreen({
     super.key,
     this.bookingId,
     this.bookingIds = const [],
+    this.facilityId,
     this.chatOption,
     this.paymentQuote,
     this.bookingSource,
     this.chatbotSessionId,
     this.facilityName,
+    this.courtNumber,
+    this.courtLabel,
     this.startAt,
     this.endAt,
     this.totalPrice,
@@ -29,11 +33,14 @@ class MockPaymentScreen extends ConsumerStatefulWidget {
 
   final int? bookingId;
   final List<int> bookingIds;
+  final int? facilityId;
   final Map<String, dynamic>? chatOption;
   final Map<String, dynamic>? paymentQuote;
   final String? bookingSource;
   final String? chatbotSessionId;
   final String? facilityName;
+  final int? courtNumber;
+  final String? courtLabel;
   final DateTime? startAt;
   final DateTime? endAt;
   final double? totalPrice;
@@ -51,16 +58,11 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
   Timer? _countdownTimer;
   late DateTime _expiresAt;
   Duration _remaining = _paymentWindow;
-  final List<_PaymentMethod> _methods = const [
-    _PaymentMethod(channel: 'local_bank', provider: 'Bakong QR', icon: Icons.qr_code_2),
-    _PaymentMethod(channel: 'local_bank', provider: 'ABA Bank', icon: Icons.account_balance),
-    _PaymentMethod(channel: 'card', provider: 'Visa', icon: Icons.credit_card),
-    _PaymentMethod(channel: 'card', provider: 'Mastercard', icon: Icons.credit_card),
-    _PaymentMethod(channel: 'international_bank', provider: 'PayPal', icon: Icons.public),
-  ];
+  final List<PaymentMethodOption> _methods = standardPaymentMethods;
   int _selectedMethod = 0;
   final TextEditingController _couponCodeCtrl = TextEditingController();
   CouponItem? _appliedCoupon;
+  bool _applyingCoupon = false;
 
   @override
   void initState() {
@@ -169,38 +171,73 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     );
   }
 
-  void _applyCoupon(CouponItem coupon) {
-    setState(() {
-      _appliedCoupon = coupon;
-      _couponCodeCtrl.text = coupon.code;
-    });
+  void _handleCouponTextChanged(String value) {
+    final applied = _appliedCoupon;
+    if (applied != null && value.trim().toUpperCase() != applied.code) {
+      setState(() => _appliedCoupon = null);
+    }
   }
 
-  CouponItem? _findCouponByCode(List<CouponItem> coupons, String rawCode) {
-    final code = rawCode.trim().toUpperCase();
+  Future<void> _applyCouponCode() async {
+    final code = _couponCodeCtrl.text.trim().toUpperCase();
     if (code.isEmpty) {
-      return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a coupon code first.')),
+      );
+      return;
     }
-    for (final coupon in coupons) {
-      if (coupon.code == code) {
-        return coupon;
+
+    final session = ref.read(authSessionProvider);
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again to validate this coupon.')),
+      );
+      return;
+    }
+
+    setState(() => _applyingCoupon = true);
+    try {
+      final query = <String, String>{'code': code};
+      final facilityId = _effectiveFacilityId;
+      if (facilityId != null) {
+        query['facility_id'] = facilityId.toString();
       }
-    }
-    return null;
-  }
 
-  void _showCouponValidationMessage(List<CouponItem> coupons, String rawCode) {
-    final code = rawCode.trim().toUpperCase();
-    String message;
-    if (code.isEmpty) {
-      message = 'Enter a coupon code first.';
-    } else if (coupons.isEmpty) {
-      message = 'No active coupons right now. Please try again later.';
-    } else {
-      message = 'Coupon not available. It may be expired, inactive, or entered incorrectly.';
-    }
+      final rows = await ref.read(apiClientProvider).getList(
+        '/api/coupons/active/',
+        query,
+        session.token,
+      );
+      if (rows.isEmpty) {
+        throw Exception(
+          'Coupon is invalid for this venue, inactive, expired, or not found.',
+        );
+      }
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final coupon = CouponItem.fromJson(
+        Map<String, dynamic>.from(rows.first as Map),
+      );
+      if (!mounted) return;
+      setState(() {
+        _appliedCoupon = coupon;
+        _couponCodeCtrl.text = coupon.code;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${coupon.code} applied — ${coupon.discountPercent.toStringAsFixed(0)}% off.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '').trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _applyingCoupon = false);
+    }
   }
 
   double _discountAmount(double total) {
@@ -215,6 +252,24 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     return widget.bookingIds.isNotEmpty
         ? widget.bookingIds
         : (widget.bookingId == null ? const <int>[] : <int>[widget.bookingId!]);
+  }
+
+  int? get _effectiveFacilityId {
+    if (widget.facilityId != null) {
+      return widget.facilityId;
+    }
+
+    final rawFacilityId = widget.chatOption?['facility_id'];
+    if (rawFacilityId is num) {
+      return rawFacilityId.toInt();
+    }
+    final parsed = int.tryParse(rawFacilityId?.toString() ?? '');
+    if (parsed != null) {
+      return parsed;
+    }
+
+    final optionId = widget.chatOption?['option_id']?.toString() ?? '';
+    return int.tryParse(optionId.split(':').first);
   }
 
   String get _receiptId {
@@ -237,9 +292,14 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       'receipt_id': _receiptId,
       'booking_ids': _effectiveBookingIds,
       'facility': widget.facilityName,
+      'court_number': widget.courtNumber,
+      'court_label': widget.courtLabel,
       'start_at': widget.startAt?.toIso8601String(),
       'end_at': widget.endAt?.toIso8601String(),
-      'amount': widget.totalPrice,
+      'amount': ((widget.totalPrice ?? 0) - _discountAmount(widget.totalPrice ?? 0))
+          .clamp(0, double.infinity)
+          .toStringAsFixed(2),
+      'coupon_code': _appliedCoupon?.code,
       'currency': widget.currency,
     });
   }
@@ -301,11 +361,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       ref.invalidate(bookingHistoryProvider);
       ref.invalidate(dashboardSummaryProvider);
       ref.invalidate(liveSlotAvailabilityProvider);
-      await Future.wait([
-        ref.read(bookingHistoryProvider.future),
-        ref.read(dashboardSummaryProvider.future),
-      ]);
-
       if (mounted) {
         await showGeneralDialog<void>(
           context: context,
@@ -313,10 +368,11 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
           barrierLabel: 'payment-success',
           barrierColor: Colors.black.withValues(alpha: 0.32),
           transitionDuration: const Duration(milliseconds: 260),
-          pageBuilder: (_, _, _) {
-            return const _PaymentSuccessDialog(
+          pageBuilder: (dialogContext, _, _) {
+            return _PaymentSuccessDialog(
               title: 'Payment Successful',
               message: 'Your booking is confirmed and receipt is ready. Good luck and enjoy your game!',
+              onGoHome: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
             );
           },
           transitionBuilder: (context, animation, secondaryAnimation, child) {
@@ -359,7 +415,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 430;
     final tiny = width < 360;
-    final couponsAsync = ref.watch(activeCouponsProvider);
     final originalTotal = widget.totalPrice ?? 0;
     final discountAmount = _discountAmount(originalTotal);
     final totalAfterDiscount = (originalTotal - discountAmount).clamp(0, double.infinity).toDouble();
@@ -401,6 +456,8 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                   if (hasReceipt)
                     _ReceiptCard(
                       facilityName: widget.facilityName!,
+                      courtNumber: widget.courtNumber,
+                      courtLabel: widget.courtLabel,
                       startAt: widget.startAt!,
                       endAt: widget.endAt!,
                       totalPrice: totalAfterDiscount,
@@ -431,6 +488,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                               TextField(
                                 controller: _couponCodeCtrl,
                                 textCapitalization: TextCapitalization.characters,
+                                onChanged: _handleCouponTextChanged,
                                 decoration: InputDecoration(
                                   hintText: 'Enter coupon code',
                                   suffixIcon: _appliedCoupon == null
@@ -443,31 +501,21 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                           }),
                                         ),
                                 ),
-                                onSubmitted: (value) {
-                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                  final found = _findCouponByCode(coupons, value);
-                                  if (found != null) {
-                                    _applyCoupon(found);
-                                  } else {
-                                    _showCouponValidationMessage(coupons, value);
-                                  }
-                                },
+                                onSubmitted: (_) => _applyCouponCode(),
                               ),
                               const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                    final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
-                                    if (found != null) {
-                                      _applyCoupon(found);
-                                    } else {
-                                      _showCouponValidationMessage(coupons, _couponCodeCtrl.text);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.sell_outlined),
-                                  label: const Text('Apply Code'),
+                                  onPressed: _applyingCoupon ? null : _applyCouponCode,
+                                  icon: _applyingCoupon
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.sell_outlined),
+                                  label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
                                 ),
                               ),
                             ],
@@ -479,6 +527,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                 child: TextField(
                                   controller: _couponCodeCtrl,
                                   textCapitalization: TextCapitalization.characters,
+                                  onChanged: _handleCouponTextChanged,
                                   decoration: InputDecoration(
                                     hintText: 'Enter coupon code',
                                     suffixIcon: _appliedCoupon == null
@@ -491,53 +540,30 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                                             }),
                                           ),
                                   ),
-                                  onSubmitted: (value) {
-                                    final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                    final found = _findCouponByCode(coupons, value);
-                                    if (found != null) {
-                                      _applyCoupon(found);
-                                    } else {
-                                      _showCouponValidationMessage(coupons, value);
-                                    }
-                                  },
+                                  onSubmitted: (_) => _applyCouponCode(),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               OutlinedButton.icon(
-                                onPressed: () {
-                                  final coupons = couponsAsync.value ?? const <CouponItem>[];
-                                  final found = _findCouponByCode(coupons, _couponCodeCtrl.text);
-                                  if (found != null) {
-                                    _applyCoupon(found);
-                                  } else {
-                                    _showCouponValidationMessage(coupons, _couponCodeCtrl.text);
-                                  }
-                                },
-                                icon: const Icon(Icons.sell_outlined),
-                                label: const Text('Apply Code'),
+                                onPressed: _applyingCoupon ? null : _applyCouponCode,
+                                icon: _applyingCoupon
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.sell_outlined),
+                                label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
                               ),
                             ],
                           ),
                         const SizedBox(height: 8),
-                        couponsAsync.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 4),
-                            child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const Text(
+                          'Enter the coupon code provided by this venue, then tap Apply Code.',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
                           ),
-                          error: (error, stack) => const Text('Unable to load coupons right now.'),
-                          data: (coupons) {
-                            if (coupons.isEmpty) {
-                              return const Text(
-                                'No active coupons right now.',
-                                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                              );
-                            }
-
-                            return const Text(
-                              'Enter a valid coupon code manually to apply discount.',
-                              style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                            );
-                          },
                         ),
                         if (_appliedCoupon != null) ...[
                           const SizedBox(height: 8),
@@ -603,61 +629,13 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: const Color(0xFFE5E7EB)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Payment Method',
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: tiny ? 15.5 : 17),
-                        ),
-                        SizedBox(height: tiny ? 8 : 10),
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _methods.length,
-                          separatorBuilder: (_, _) => SizedBox(height: tiny ? 6 : 8),
-                          itemBuilder: (context, index) {
-                            final method = _methods[index];
-                            final selected = _selectedMethod == index;
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => setState(() => _selectedMethod = index),
-                              child: Ink(
-                                padding: EdgeInsets.symmetric(horizontal: tiny ? 8 : 10, vertical: tiny ? 8 : 10),
-                                decoration: BoxDecoration(
-                                  gradient: selected
-                                      ? const LinearGradient(colors: [Color(0xFFDBEAFE), Color(0xFFE0F2FE)])
-                                      : const LinearGradient(colors: [Colors.white, Colors.white]),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: selected ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(method.icon, color: const Color(0xFF334155), size: tiny ? 18 : 22),
-                                    SizedBox(width: tiny ? 8 : 10),
-                                    Expanded(
-                                      child: Text(
-                                        method.provider,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: tiny ? 13 : 15),
-                                      ),
-                                    ),
-                                    Icon(
-                                      selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                                      color: selected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
-                                      size: tiny ? 20 : 28,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                    child: PaymentMethodSelector(
+                      methods: _methods,
+                      selectedIndex: _selectedMethod,
+                      compact: tiny,
+                      onSelected: (index) => setState(() => _selectedMethod = index),
                     ),
+
                   ),
                   const SizedBox(height: 14),
                   SizedBox(
@@ -742,6 +720,8 @@ class _CheckoutHeader extends StatelessWidget {
 class _ReceiptCard extends StatelessWidget {
   const _ReceiptCard({
     required this.facilityName,
+    this.courtNumber,
+    this.courtLabel,
     required this.startAt,
     required this.endAt,
     required this.totalPrice,
@@ -754,6 +734,8 @@ class _ReceiptCard extends StatelessWidget {
   });
 
   final String facilityName;
+  final int? courtNumber;
+  final String? courtLabel;
   final DateTime startAt;
   final DateTime endAt;
   final double totalPrice;
@@ -831,6 +813,8 @@ class _ReceiptCard extends StatelessWidget {
                 shrinkWrap: true,
                 children: [
                   _ReceiptMetaCard(label: 'Facility', value: facilityName),
+                  if (courtNumber != null)
+                    _ReceiptMetaCard(label: courtLabel ?? 'Field', value: '${courtNumber}'),
                   _ReceiptMetaCard(
                     label: 'Time',
                     value: '${DateFormat('EEE, dd MMM • HH:mm').format(startAt)} - ${DateFormat('HH:mm').format(endAt)}',
@@ -912,89 +896,74 @@ class _ReceiptMetaCard extends StatelessWidget {
   }
 }
 
-class _PaymentMethod {
-  const _PaymentMethod({required this.channel, required this.provider, required this.icon});
-
-  final String channel;
-  final String provider;
-  final IconData icon;
-}
-
-class _PaymentSuccessDialog extends StatefulWidget {
-  const _PaymentSuccessDialog({required this.title, required this.message});
+class _PaymentSuccessDialog extends StatelessWidget {
+  const _PaymentSuccessDialog({
+    required this.title,
+    required this.message,
+    required this.onGoHome,
+  });
 
   final String title;
   final String message;
-
-  @override
-  State<_PaymentSuccessDialog> createState() => _PaymentSuccessDialogState();
-}
-
-class _PaymentSuccessDialogState extends State<_PaymentSuccessDialog> {
-  @override
-  void initState() {
-    super.initState();
-    Future<void>.delayed(const Duration(milliseconds: 1400), () {
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pop();
-    });
-  }
+  final VoidCallback onGoHome;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: 280,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.8, end: 1),
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutBack,
-                builder: (context, value, child) {
-                  return Transform.scale(scale: value, child: child);
-                },
-                child: Container(
-                  width: 66,
-                  height: 66,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 38),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF15803D),
+                size: 42,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onGoHome,
+                icon: const Icon(Icons.home_rounded),
+                label: const Text('Back to Home'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

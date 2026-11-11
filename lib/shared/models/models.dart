@@ -69,7 +69,7 @@ class Facility {
       latitude: _toDouble(json['latitude']),
       longitude: _toDouble(json['longitude']),
       basePricePerHour: _toDouble(json['base_price_per_hour']),
-      rating: _toDouble(json['rating'], fallback: 4.5),
+      rating: _toDouble(json['rating'], fallback: 0.0),
       imageUrl: (image == null || image.isEmpty) ? null : image,
       isActive: json['is_active'] as bool? ?? true,
       archivedAt: (json['archived_at'] as String?) == null
@@ -150,6 +150,8 @@ class BookingItem {
     required this.chatbotSessionId,
     required this.couponCode,
     required this.couponDiscount,
+    required this.checkinToken,
+    required this.checkedInAt,
   });
 
   final int id;
@@ -163,6 +165,8 @@ class BookingItem {
   final String chatbotSessionId;
   final String couponCode;
   final double couponDiscount;
+  final String checkinToken;
+  final DateTime? checkedInAt;
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
     if (value is num) {
@@ -188,6 +192,10 @@ class BookingItem {
       chatbotSessionId: (json['chatbot_session_id'] as String?) ?? '',
       couponCode: (json['coupon_code'] as String?) ?? '',
       couponDiscount: _toDouble(json['coupon_discount']),
+      checkinToken: (json['checkin_token'] as String?) ?? '',
+      checkedInAt: json['checked_in_at'] == null
+          ? null
+          : DateTime.parse(json['checked_in_at'] as String).toLocal(),
     );
   }
 }
@@ -371,6 +379,7 @@ class DashboardUpcomingSlot {
     required this.slotId,
     required this.facilityId,
     required this.facilityName,
+    this.courtNumber = 1,
     required this.sportType,
     required this.isIndoor,
     required this.startAt,
@@ -383,6 +392,7 @@ class DashboardUpcomingSlot {
   final int slotId;
   final int facilityId;
   final String facilityName;
+  final int courtNumber;
   final String sportType;
   final bool isIndoor;
   final DateTime startAt;
@@ -396,6 +406,7 @@ class DashboardUpcomingSlot {
       slotId: (json['slot_id'] as num).toInt(),
       facilityId: (json['facility_id'] as num).toInt(),
       facilityName: json['facility_name'] as String? ?? '-',
+      courtNumber: (json['court_number'] as num?)?.toInt() ?? 1,
       sportType: (json['sport_type'] as String? ?? 'unknown').toLowerCase(),
       isIndoor: json['is_indoor'] as bool? ?? false,
       startAt: DateTime.parse(json['start_at'] as String).toLocal(),
@@ -484,6 +495,7 @@ class LiveSlotAvailability {
     required this.slotId,
     required this.facilityId,
     required this.facilityName,
+    required this.courtNumber,
     required this.sportType,
     required this.startAt,
     required this.endAt,
@@ -503,6 +515,7 @@ class LiveSlotAvailability {
   final String slotId;
   final String facilityId;
   final String facilityName;
+  final int courtNumber;
   final String sportType;
   final DateTime startAt;
   final DateTime endAt;
@@ -523,6 +536,7 @@ class LiveSlotAvailability {
       slotId: (json['slot_id'] ?? '').toString(),
       facilityId: (json['facility_id'] ?? '').toString(),
       facilityName: json['facility_name'] as String? ?? '-',
+      courtNumber: (json['court_number'] as num?)?.toInt() ?? 1,
       sportType: (json['sport_type'] as String? ?? 'unknown').toLowerCase(),
       startAt: DateTime.parse(json['start_at'] as String).toLocal(),
       endAt: DateTime.parse(json['end_at'] as String).toLocal(),

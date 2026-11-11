@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from django.db import models
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets
@@ -100,221 +101,148 @@ class TimeSlotViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def live_slots_endpoint(request):
-    _release_expired_pending_bookings()
+    # Expiry cleanup is shared by all callers; do not scan pending bookings
+    # on every availability refresh. Payment/cancel endpoints still validate
+    # expiry synchronously before changing a booking.
+    if cache.add('live-slots:pending-expiry:last-run', '1', timeout=15):
+        _release_expired_pending_bookings()
     _ensure_rolling_slot_window_cached()
+
     sport_type = (request.query_params.get('sport_type') or '').strip().lower()
+    facility_id = (request.query_params.get('facility_id') or '').strip()
     date_str = (request.query_params.get('date') or '').strip()
+    start_date_str = (request.query_params.get('start_date') or '').strip()
+    end_date_str = (request.query_params.get('end_date') or '').strip()
     is_indoor_raw = request.query_params.get('is_indoor')
     requested_date, day_start, day_end = _date_bounds_for_query(date_str)
+
+    # Booking searches can request the complete visible date strip in one
+    # call. This lets the client switch dates instantly.
+    if start_date_str or end_date_str:
+        range_start_date, range_start, _ = _date_bounds_for_query(start_date_str)
+        range_end_date, _, range_end = _date_bounds_for_query(end_date_str)
+        if (
+            range_start_date is None
+            or range_end_date is None
+            or range_end_date < range_start_date
+        ):
+            return Response({'detail': 'Invalid availability date range.'}, status=400)
+        requested_date = None
+        day_start = range_start
+        day_end = range_end
+
     now = timezone.now()
     local_today = timezone.localdate()
+
     try:
         page = max(1, int(request.query_params.get('page', '1')))
-    except ValueError:
+    except (TypeError, ValueError):
         page = 1
     try:
-        page_size = min(100, max(10, int(request.query_params.get('page_size', '50'))))
-    except ValueError:
-        page_size = 50
+        page_size = min(1000, max(10, int(request.query_params.get('page_size', '100'))))
+    except (TypeError, ValueError):
+        page_size = 100
 
-    facilities_qs = Facility.objects.filter(is_active=True)
+    # Query only the requested date window and the fields used by this response.
+    slots_qs = TimeSlot.objects.select_related('facility').filter(
+        facility__is_active=True,
+    )
     if sport_type:
-        facilities_qs = facilities_qs.filter(sport_type=sport_type)
-
+        slots_qs = slots_qs.filter(facility__sport_type=sport_type)
     if is_indoor_raw is not None:
         val = is_indoor_raw.lower()
         if val in ['true', '1']:
-            facilities_qs = facilities_qs.filter(is_indoor=True)
+            slots_qs = slots_qs.filter(facility__is_indoor=True)
         elif val in ['false', '0']:
-            facilities_qs = facilities_qs.filter(is_indoor=False)
+            slots_qs = slots_qs.filter(facility__is_indoor=False)
+    if day_start is not None and day_end is not None:
+        slots_qs = slots_qs.filter(start_at__gte=day_start, start_at__lt=day_end)
+    if requested_date is None or requested_date == local_today:
+        slots_qs = slots_qs.filter(start_at__gte=now)
 
-    facilities = list(facilities_qs)
-    if not facilities:
-        return Response(
-            {
-                'count': 0,
-                'page': page,
-                'page_size': page_size,
-                'has_next': False,
-                'results': [],
-            }
-        )
+    slots_qs = slots_qs.only(
+        'id', 'facility_id', 'start_at', 'end_at', 'court_number',
+        'current_bookings', 'max_bookings', 'is_open',
+        'reservation_hold_until', 'slot_version',
+        'facility__id', 'facility__name', 'facility__sport_type',
+        'facility__base_price_per_hour', 'facility__is_indoor',
+        'facility__location_name', 'facility__opening_hours',
+    )
 
-    facility_map = {f.id: f for f in facilities}
-    facility_map_by_str = {str(f.id): f for f in facilities}
+    # The client sends facility_id when a user selects a venue. Honour it here;
+    # otherwise slots from other venues can leak into the selected venue's list.
+    if facility_id:
+        slots_qs = slots_qs.filter(facility_id=facility_id)
+
+    # Opening hours are enforced by the API as well as by slot generation. This
+    # prevents stale rows or another worker's outdated slots being bookable.
+    candidates = list(slots_qs.order_by('start_at', 'id'))
+    valid_slots = []
+    local_tz = timezone.get_current_timezone()
+    for slot in candidates:
+        configured_hours = (slot.facility.opening_hours or '').strip()
+        if configured_hours:
+            try:
+                opening_raw, closing_raw = configured_hours.split('-', 1)
+                opening_time = datetime.strptime(opening_raw.strip(), '%H:%M').time()
+                closing_time = datetime.strptime(closing_raw.strip(), '%H:%M').time()
+                local_start = timezone.localtime(slot.start_at, local_tz)
+                local_end = timezone.localtime(slot.end_at, local_tz)
+                start_time = local_start.time().replace(tzinfo=None)
+                end_time = local_end.time().replace(tzinfo=None)
+                if (
+                    local_start.date() != local_end.date()
+                    or start_time < opening_time
+                    or end_time > closing_time
+                    or end_time <= start_time
+                ):
+                    continue
+            except (ValueError, TypeError):
+                # Invalid opening hours must not expose potentially invalid slots.
+                continue
+        valid_slots.append(slot)
+
+    total_count = len(valid_slots)
+    start_index = (page - 1) * page_size
+    slots = valid_slots[start_index : start_index + page_size]
     booked_slot_ids = _booked_slot_ids_for_user(request)
 
-    local_qs = TimeSlot.objects.select_related('facility').filter(facility__in=facilities)
-    if day_start is not None and day_end is not None:
-        local_qs = local_qs.filter(start_at__gte=day_start, start_at__lt=day_end)
-    if requested_date is None or requested_date == local_today:
-        local_qs = local_qs.filter(start_at__gte=now)
-    total_count = local_qs.count()
-    local_slots = list(
-        local_qs.order_by('start_at', 'id')[
-            (page - 1) * page_size : page * page_size
-        ]
-    )
-    local_slot_map = {str(slot.id): slot for slot in local_slots}
-
-    # Source of truth for availability must be Django DB to keep account views consistent.
-    rows = []
-
     output = []
-    seen_slot_ids = set()
-    for row in rows:
-        slot_id = str(row.get('id'))
-        local_slot = local_slot_map.get(slot_id)
-
-        if local_slot is not None:
-            facility = local_slot.facility
-            start_at = local_slot.start_at
-            end_at = local_slot.end_at
-            current = int(local_slot.current_bookings)
-            max_bookings = int(local_slot.max_bookings)
-            is_open = bool(local_slot.is_open)
-            hold_until = local_slot.reservation_hold_until
-            slot_version = int(local_slot.slot_version)
-        else:
-            facility_id = row.get('facility_id')
-            facility = facility_map.get(facility_id) or facility_map_by_str.get(str(facility_id))
-            if facility is None:
-                continue
-
-            start_at = parse_datetime(row.get('start_at') or '')
-            end_at = parse_datetime(row.get('end_at') or '')
-            if not start_at or not end_at:
-                continue
-
-            if timezone.is_naive(start_at):
-                start_at = timezone.make_aware(start_at)
-            if timezone.is_naive(end_at):
-                end_at = timezone.make_aware(end_at)
-
-            current = int(row.get('current_bookings') or 0)
-            max_bookings = int(row.get('max_bookings') or 0)
-            is_open = bool(row.get('is_open', True))
-            hold_until_raw = row.get('reservation_hold_until')
-            hold_until = parse_datetime(hold_until_raw) if hold_until_raw else None
-            if hold_until is not None and timezone.is_naive(hold_until):
-                hold_until = timezone.make_aware(hold_until)
-            slot_version = int(row.get('slot_version') or 1)
-
-        if requested_date is not None and start_at.date() != requested_date:
-            continue
-        if start_at < now and (requested_date is None or requested_date == local_today):
-            continue
-
-        has_active_hold = bool(hold_until and hold_until > timezone.now())
-        availability_status = _availability_status(is_open, current, max_bookings, hold_until)
-        is_available = availability_status in ['available', 'limited']
-
-        output.append(
-            {
-                'slot_id': slot_id,
-                'facility_id': str(facility.id),
-                'facility_name': facility.name,
-                'sport_type': facility.sport_type,
-                'start_at': start_at,
-                'end_at': end_at,
-                'current_bookings': current,
-                'max_bookings': max_bookings,
-                'is_open': is_open,
-                'is_available': is_available,
-                'availability_status': availability_status,
-                'slot_version': slot_version,
-                'reservation_hold_until': hold_until,
-                'booked_by_me': slot_id in booked_slot_ids,
-                'base_price_per_hour': float(facility.base_price_per_hour),
-                'is_indoor': facility.is_indoor,
-                'location_name': facility.location_name,
-            }
-        )
-        seen_slot_ids.add(slot_id)
-
-    for slot in local_slots:
-        slot_id = str(slot.id)
-        if slot_id in seen_slot_ids:
-            continue
-
-        has_active_hold = bool(slot.reservation_hold_until and slot.reservation_hold_until > timezone.now())
-        availability_status = _availability_status(
+    for slot in slots:
+        status_value = _availability_status(
             slot.is_open,
             slot.current_bookings,
             slot.max_bookings,
             slot.reservation_hold_until,
         )
-        is_available = availability_status in ['available', 'limited']
-        if slot.start_at < now and (requested_date is None or requested_date == local_today):
-            continue
-        output.append(
-            {
-                'slot_id': slot_id,
-                'facility_id': str(slot.facility_id),
-                'facility_name': slot.facility.name,
-                'sport_type': slot.facility.sport_type,
-                'start_at': slot.start_at,
-                'end_at': slot.end_at,
-                'current_bookings': slot.current_bookings,
-                'max_bookings': slot.max_bookings,
-                'is_open': slot.is_open,
-                'is_available': is_available,
-                'availability_status': availability_status,
-                'slot_version': slot.slot_version,
-                'reservation_hold_until': slot.reservation_hold_until,
-                'booked_by_me': slot_id in booked_slot_ids,
-                'base_price_per_hour': float(slot.facility.base_price_per_hour),
-                'is_indoor': slot.facility.is_indoor,
-                'location_name': slot.facility.location_name,
-            }
-        )
+        output.append({
+            'slot_id': str(slot.id),
+            'facility_id': str(slot.facility_id),
+            'facility_name': slot.facility.name,
+            'sport_type': slot.facility.sport_type,
+            'court_number': slot.court_number,
+            'start_at': slot.start_at,
+            'end_at': slot.end_at,
+            'current_bookings': slot.current_bookings,
+            'max_bookings': slot.max_bookings,
+            'is_open': slot.is_open,
+            'is_available': status_value in ['available', 'limited'],
+            'availability_status': status_value,
+            'slot_version': slot.slot_version,
+            'reservation_hold_until': slot.reservation_hold_until,
+            'booked_by_me': str(slot.id) in booked_slot_ids,
+            'base_price_per_hour': float(slot.facility.base_price_per_hour),
+            'is_indoor': slot.facility.is_indoor,
+            'location_name': slot.facility.location_name,
+        })
 
-    if not output:
-        for slot in local_slots:
-            if slot.start_at < now and (requested_date is None or requested_date == local_today):
-                continue
-            output.append(
-                {
-                    'slot_id': str(slot.id),
-                    'facility_id': str(slot.facility_id),
-                    'facility_name': slot.facility.name,
-                    'sport_type': slot.facility.sport_type,
-                    'start_at': slot.start_at,
-                    'end_at': slot.end_at,
-                    'current_bookings': slot.current_bookings,
-                    'max_bookings': slot.max_bookings,
-                    'is_open': slot.is_open,
-                    'is_available': _availability_status(
-                        slot.is_open,
-                        slot.current_bookings,
-                        slot.max_bookings,
-                        slot.reservation_hold_until,
-                    ) in ['available', 'limited'],
-                    'availability_status': _availability_status(
-                        slot.is_open,
-                        slot.current_bookings,
-                        slot.max_bookings,
-                        slot.reservation_hold_until,
-                    ),
-                    'slot_version': slot.slot_version,
-                    'reservation_hold_until': slot.reservation_hold_until,
-                    'booked_by_me': str(slot.id) in booked_slot_ids,
-                    'base_price_per_hour': float(slot.facility.base_price_per_hour),
-                    'is_indoor': slot.facility.is_indoor,
-                    'location_name': slot.facility.location_name,
-                }
-            )
-
-    output.sort(key=lambda item: item['start_at'])
-    return Response(
-        {
-            'count': total_count,
-            'page': page,
-            'page_size': page_size,
-            'has_next': page * page_size < total_count,
-            'results': output,
-        }
-    )
+    return Response({
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'has_next': page * page_size < total_count,
+        'results': output,
+    })
 
 
 @api_view(['GET'])
@@ -411,6 +339,7 @@ def slot_availability_endpoint(request):
                 current_bookings=current,
                 max_bookings=max_bookings,
                 is_open=is_open,
+                court_number=(local_slot.court_number if local_slot is not None else int(row.get('court_number') or 1)),
                 slot_version=slot_version,
                 reservation_hold_until=hold_until,
                 booked_by_me=slot_id in booked_slot_ids,
@@ -434,6 +363,7 @@ def slot_availability_endpoint(request):
                 current_bookings=slot.current_bookings,
                 max_bookings=slot.max_bookings,
                 is_open=slot.is_open,
+                court_number=slot.court_number,
                 slot_version=slot.slot_version,
                 reservation_hold_until=slot.reservation_hold_until,
                 booked_by_me=slot_id in booked_slot_ids,
@@ -453,6 +383,7 @@ def slot_availability_endpoint(request):
                     current_bookings=slot.current_bookings,
                     max_bookings=slot.max_bookings,
                     is_open=slot.is_open,
+                    court_number=slot.court_number,
                     slot_version=slot.slot_version,
                     reservation_hold_until=slot.reservation_hold_until,
                     booked_by_me=str(slot.id) in booked_slot_ids,
@@ -485,6 +416,7 @@ def slot_availability_endpoint(request):
         entry['slots'].append(
             {
                 'slot_id': row['slot_id'],
+                'court_number': row['court_number'],
                 'start_at': row['start_at'],
                 'end_at': row['end_at'],
                 'current_bookings': row['current_bookings'],

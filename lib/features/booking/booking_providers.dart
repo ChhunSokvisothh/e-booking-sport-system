@@ -26,6 +26,22 @@ final activeCouponsProvider = FutureProvider<List<CouponItem>>((ref) async {
   return list.map((e) => CouponItem.fromJson(e as Map<String, dynamic>)).toList();
 });
 
+final activeCouponsForFacilityProvider =
+    FutureProvider.family<List<CouponItem>, int>((ref, facilityId) async {
+  final session = ref.watch(authSessionProvider);
+  if (session == null) {
+    return [];
+  }
+
+  final client = ref.watch(apiClientProvider);
+  final list = await client.getList(
+    '/api/coupons/active/',
+    {'facility_id': facilityId.toString()},
+    session.token,
+  );
+  return list.map((e) => CouponItem.fromJson(e as Map<String, dynamic>)).toList();
+});
+
 final ownerCouponsProvider = FutureProvider<List<CouponItem>>((ref) async {
   final session = ref.watch(authSessionProvider);
   if (session == null) {

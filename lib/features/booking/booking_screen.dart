@@ -13,6 +13,18 @@ import 'booking_providers.dart';
 import 'booking_receipt_utils.dart';
 import 'receipt_center_screen.dart';
 
+
+final bookingProfileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final session = ref.watch(authSessionProvider);
+  if (session == null) return null;
+
+  return ref.watch(apiClientProvider).getMap(
+    '/api/auth/profile/',
+    token: session.token,
+  );
+});
+
+
 class BookingScreen extends ConsumerStatefulWidget {
   const BookingScreen({super.key});
 
@@ -294,6 +306,19 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final session = ref.watch(authSessionProvider);
     final bookings = ref.watch(bookingHistoryProvider);
     final facilities = ref.watch(facilityListProvider).value ?? const <Facility>[];
+    final profileAsync = ref.watch(bookingProfileProvider);
+    final profile = profileAsync.value;
+    final savedDisplayName = (profile?['display_name'] as String?)?.trim() ?? '';
+    final avatarUrl = (profile?['avatar_url'] as String?)?.trim();
+
+    final activeCouponsAsync = ref.watch(activeCouponsProvider);
+    final coupons = activeCouponsAsync.value ?? const <CouponItem>[];
+    CouponItem? topCoupon;
+    for (final coupon in coupons) {
+      if (topCoupon == null || coupon.discountPercent > topCoupon.discountPercent) {
+        topCoupon = coupon;
+      }
+    }
 
     if (session == null) {
       return Center(
@@ -379,6 +404,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
           child: ListView(
             padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 102),
             children: [
+              const SizedBox(height: 22),
               Row(
                 children: [
                   Expanded(
@@ -391,12 +417,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             color: Colors.grey.shade500,
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4,
+                            letterSpacing: 1.6,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _displayName(session.email),
+                          savedDisplayName.isNotEmpty ? savedDisplayName : 'Sports Lover',
                           style: TextStyle(
                             fontSize: tablet ? 40 : (compact ? 30 : 36),
                             fontWeight: FontWeight.w900,
@@ -406,20 +432,45 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ],
                     ),
                   ),
-                  const _HeaderCircleButton(
+                  const SizedBox(width: 12),
+                  _CircleIconButton(
                     icon: Icons.notifications_none_rounded,
-                    semanticLabel: 'Notifications',
+                    onPressed: () {
+                      final messenger = ScaffoldMessenger.of(context);
+                      if (topCoupon == null) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('No active coupon notification right now.')),
+                        );
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'New top coupon available: ${topCoupon.code} (${topCoupon.discountPercent.toStringAsFixed(0)}% OFF)',
+                          ),
+                        ),
+                      );
+                    },
+                    showDot: topCoupon != null,
                   ),
                   const SizedBox(width: 10),
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 20,
-                    backgroundImage: NetworkImage(
-                      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
-                    ),
+                    backgroundColor: const Color(0xFFE5E7EB),
+                    backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                        ? NetworkImage(avatarUrl)
+                        : null,
+                    onBackgroundImageError: avatarUrl != null && avatarUrl.isNotEmpty
+                        ? (_, _) {}
+                        : null,
+                    child: avatarUrl == null || avatarUrl.isEmpty
+                        ? const Icon(Icons.person_rounded, color: Color(0xFF6B7280))
+                        : null,
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
+
               if (compact)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -665,22 +716,46 @@ class _DetailStatusChip extends StatelessWidget {
   }
 }
 
-class _HeaderCircleButton extends StatelessWidget {
-  const _HeaderCircleButton({required this.icon, required this.semanticLabel});
+class _CircleIconButton extends StatelessWidget {
+  const _CircleIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.showDot = false,
+  });
 
   final IconData icon;
-  final String semanticLabel;
+  final VoidCallback onPressed;
+  final bool showDot;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: Material(
-        color: Colors.white,
-        shape: const CircleBorder(),
-        child: IconButton(onPressed: () {}, icon: Icon(icon, size: 22)),
-      ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: Colors.white,
+          shape: const CircleBorder(),
+          child: IconButton(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 22, color: const Color(0xFF374151)),
+            tooltip: 'Notifications',
+          ),
+        ),
+        if (showDot)
+          Positioned(
+            right: 7,
+            top: 7,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

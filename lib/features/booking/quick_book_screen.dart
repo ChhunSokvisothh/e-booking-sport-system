@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -40,29 +39,30 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     DateTime.now().month,
     DateTime.now().day,
   );
+  DateTime _appliedDate = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+  );
   bool _indoorOnly = false;
+  bool _appliedIndoorOnly = false;
   String? _sportType;
+  String? _appliedSportType;
   String? _selectedFacilityId;
+  String? _appliedFacilityId;
+  int _selectedCourtNumber = 1;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
   int _slotPage = 1;
-  Timer? _availabilityRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _availabilityRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted && !_processing) {
-        ref.invalidate(
-          liveSlotAvailabilityWithDiagnosticsProvider(
-            serializeQuery(_buildQuery()),
-          ),
-        );
-      }
-    });
     final now = DateTime.now();
     _sportType = widget.initialSportType;
+    _appliedSportType = widget.initialSportType;
     _selectedFacilityId = widget.initialFacilityId;
+    _appliedFacilityId = widget.initialFacilityId;
     final initialSlots = widget.initialSlots;
 
     if (initialSlots != null && initialSlots.isNotEmpty) {
@@ -72,8 +72,11 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         first.startAt.month,
         first.startAt.day,
       );
+      _appliedDate = _selectedDate;
       _sportType = first.sportType;
+      _appliedSportType = first.sportType;
       _selectedFacilityId = first.facilityId;
+      _appliedFacilityId = first.facilityId;
       return;
     }
 
@@ -87,17 +90,19 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       initial.startAt.month,
       initial.startAt.day,
     );
+    _appliedDate = _selectedDate;
     _sportType = initial.sportType;
+    _appliedSportType = initial.sportType;
     _selectedFacilityId = initial.facilityId;
+    _appliedFacilityId = initial.facilityId;
     if (initial.startAt.isAfter(now)) {
       _selectedSlotIds.add(initial.slotId);
     }
   }
 
-  @override
-  void dispose() {
-    _availabilityRefreshTimer?.cancel();
-    super.dispose();
+  double _slotDurationHours(LiveSlotAvailability slot) {
+    final minutes = slot.endAt.difference(slot.startAt).inMinutes;
+    return minutes > 0 ? minutes / 60.0 : 0.0;
   }
 
   _SlotVisualState _slotVisualState({
@@ -124,16 +129,48 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
 
   Map<String, String> _buildQuery() {
     final formatter = DateFormat('yyyy-MM-dd');
+    // Preload the complete visible week once. Date-chip changes are then
+    // local filters and do not wait for another availability request.
+    final today = DateTime.now();
+    final rangeStart = DateTime(today.year, today.month, today.day);
+    final rangeEnd = rangeStart.add(const Duration(days: 6));
+
     return {
-      'date': formatter.format(_selectedDate),
-      ...?_sportType == null ? null : {'sport_type': _sportType!},
-      ...?_selectedFacilityId == null
+      // Fetch the whole visible 7-day date strip once. Date-chip changes then
+      // filter this cached result locally instead of making another request.
+      'start_date': formatter.format(rangeStart),
+      'end_date': formatter.format(rangeEnd),
+      ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},
+      ...?_appliedFacilityId == null
           ? null
-          : {'facility_id': _selectedFacilityId!},
-      ...?_indoorOnly ? {'is_indoor': 'true'} : null,
-      'page': '$_slotPage',
-      'page_size': '50',
+          : {'facility_id': _appliedFacilityId!},
+      ...?_appliedIndoorOnly ? {'is_indoor': 'true'} : null,
+      'page': '1',
+      'page_size': '1000',
     };
+  }
+
+  Future<void> _cancelUnpaidBookings(
+    ApiClient api,
+    String token,
+    List<int> bookingIds,
+  ) async {
+    // A pending booking is only a temporary slot hold. Leaving checkout
+    // without paying must release every hold immediately.
+    for (final id in bookingIds) {
+      try {
+        await api.postJson('/api/bookings/$id/cancel/', {}, token: token);
+      } catch (_) {
+        // Best-effort cleanup. The backend payment-window expiry remains a
+        // safety net if the client loses its connection while leaving checkout.
+      }
+    }
+    ref.invalidate(bookingHistoryProvider);
+    ref.invalidate(dashboardSummaryProvider);
+    ref.invalidate(liveSlotAvailabilityProvider);
+    ref.invalidate(
+      liveSlotAvailabilityWithDiagnosticsProvider(serializeQuery(_buildQuery())),
+    );
   }
 
   Future<int> _createPendingBooking(
@@ -170,9 +207,13 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
     final first = sorted.first;
     final last = sorted.last;
+    final totalHours = sorted.fold<double>(
+      0,
+      (sum, slot) => sum + _slotDurationHours(slot),
+    );
     final total = sorted.fold<double>(
       0,
-      (sum, slot) => sum + slot.basePricePerHour,
+      (sum, slot) => sum + slot.basePricePerHour * _slotDurationHours(slot),
     );
 
     final confirm = await showModalBottomSheet<bool>(
@@ -195,6 +236,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   first.facilityName,
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  '${first.sportType == 'billiard' ? 'Table' : 'Field'} ${first.courtNumber}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '${DateFormat('EEE, dd MMM').format(first.startAt)} • ${DateFormat('HH:mm').format(first.startAt)} - ${DateFormat('HH:mm').format(last.endAt)}',
@@ -203,7 +252,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('${sorted.length} hour slot(s) selected'),
+                Text('${sorted.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s)'),
                 const SizedBox(height: 6),
                 Text(
                   'Total: \$${total.toStringAsFixed(2)}',
@@ -240,16 +289,17 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     }
 
     setState(() => _processing = true);
+    final bookingIds = <int>[];
 
     try {
       final api = ref.read(apiClientProvider);
-      final bookingIds = <int>[];
       for (final slot in sorted) {
         final id = await _createPendingBooking(api, session.token, slot);
         bookingIds.add(id);
       }
 
       if (!mounted) {
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
         return;
       }
 
@@ -258,11 +308,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         MaterialPageRoute(
           builder: (_) => MockPaymentScreen(
             bookingIds: bookingIds,
+            facilityId: int.tryParse(first.facilityId),
             facilityName: first.facilityName,
+            courtNumber: first.courtNumber,
+            courtLabel: first.sportType == 'billiard' ? 'Table' : 'Field',
             startAt: first.startAt,
             endAt: last.endAt,
             totalPrice: total,
-            totalHours: sorted.length.toDouble(),
+            totalHours: totalHours,
           ),
         ),
       );
@@ -276,14 +329,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             serializeQuery(_buildQuery()),
           ),
         );
-        await Future.wait([
-          ref.read(bookingHistoryProvider.future),
-          ref.read(dashboardSummaryProvider.future),
-        ]);
         if (!mounted) {
           return;
         }
-        Navigator.of(context).pop();
+        // Payment is complete: clear intermediate booking screens and return
+        // to the app's home/dashboard instead of leaving the user stranded.
+        final openDashboard = widget.onOpenDashboard;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        openDashboard();
       }
 
       if (paymentResult == 'refresh_slots' && mounted) {
@@ -295,12 +348,20 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             serializeQuery(_buildQuery()),
           ),
         );
-        await Future.wait([
-          ref.read(bookingHistoryProvider.future),
-          ref.read(dashboardSummaryProvider.future),
-        ]);
+      }
+
+      // Any exit from checkout other than a confirmed payment releases the
+      // temporary pending bookings immediately (including the AppBar back).
+      if (paymentResult != true && paymentResult != 'refresh_slots') {
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
       }
     } catch (_) {
+      // If checkout navigation or booking creation fails after one or more
+      // holds were created, do not leave those unpaid bookings behind.
+      if (bookingIds.isNotEmpty) {
+        final api = ref.read(apiClientProvider);
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -337,9 +398,14 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
               setState(() {
                 final now = DateTime.now();
                 _selectedDate = DateTime(now.year, now.month, now.day);
+                _appliedDate = _selectedDate;
                 _sportType = null;
+                _appliedSportType = null;
                 _indoorOnly = false;
+                _appliedIndoorOnly = false;
                 _selectedFacilityId = null;
+                _appliedFacilityId = null;
+                _selectedCourtNumber = 1;
                 _selectedSlotIds.clear();
                 _slotPage = 1;
               });
@@ -376,9 +442,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             final allRows = payload.data;
             final dateRows = allRows.where((row) {
               final d = row.startAt;
-              return d.year == _selectedDate.year &&
-                  d.month == _selectedDate.month &&
-                  d.day == _selectedDate.day;
+              return d.year == _appliedDate.year &&
+                  d.month == _appliedDate.month &&
+                  d.day == _appliedDate.day;
             }).toList()..sort((a, b) => a.startAt.compareTo(b.startAt));
 
             final facilityIds = <String>{};
@@ -401,20 +467,26 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
-            final validSlotIds = selectedFacilityRows
+            final courtNumbers = selectedFacilityRows.map((e) => e.courtNumber).toSet().toList()..sort();
+            final selectedCourtNumber = courtNumbers.contains(_selectedCourtNumber)
+                ? _selectedCourtNumber
+                : (courtNumbers.isEmpty ? 1 : courtNumbers.first);
+            final selectedCourtRows = selectedFacilityRows.where((row) => row.courtNumber == selectedCourtNumber).toList();
+
+            final validSlotIds = selectedCourtRows
                 .map((e) => e.slotId)
                 .toSet();
             final effectiveSelectedIds = _selectedSlotIds
                 .where(validSlotIds.contains)
                 .where(
-                  (id) => selectedFacilityRows.any(
+                  (id) => selectedCourtRows.any(
                     (row) => row.slotId == id && row.isAvailable,
                   ),
                 )
                 .toSet();
 
             final selectedSlots =
-                selectedFacilityRows
+                selectedCourtRows
                     .where((row) => effectiveSelectedIds.contains(row.slotId))
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
@@ -422,9 +494,13 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             final isBilliard = _sportType == 'billiard';
             final resourceTitle = isBilliard ? 'Select Table' : 'Select Field';
 
+            final totalHours = selectedSlots.fold<double>(
+              0,
+              (sum, slot) => sum + _slotDurationHours(slot),
+            );
             final total = selectedSlots.fold<double>(
               0,
-              (sum, slot) => sum + slot.basePricePerHour,
+              (sum, slot) => sum + slot.basePricePerHour * _slotDurationHours(slot),
             );
 
             return ListView(
@@ -467,7 +543,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       Text(
                         selectedSlots.isEmpty
                             ? 'Choose one or multiple hours'
-                            : '${selectedSlots.length} slot(s) selected • \$${total.toStringAsFixed(2)}',
+                            : '${selectedSlots.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s) • USD ${total.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w600,
@@ -504,6 +580,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                               setState(() {
                                 _sportType = sport;
                                 _selectedFacilityId = null;
+                                _selectedCourtNumber = 1;
                                 _selectedSlotIds.clear();
                               });
                             },
@@ -554,7 +631,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         onTap: () {
                           setState(() {
                             _selectedDate = DateTime(d.year, d.month, d.day);
-                            _selectedFacilityId = null;
+                            // Keep the selected venue when changing dates. Clearing
+                            // it makes subsequent /live-slots requests return every
+                            // venue's slots instead of this venue's timetable.
+                            _selectedCourtNumber = 1;
                             _selectedSlotIds.clear();
                           });
                         },
@@ -562,42 +642,80 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     },
                   ),
                 ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: DateUtils.isSameDay(_selectedDate, _appliedDate) &&
+                            _sportType == _appliedSportType &&
+                            _selectedFacilityId == _appliedFacilityId &&
+                            _indoorOnly == _appliedIndoorOnly
+                        ? null
+                        : () {
+                            setState(() {
+                              _appliedDate = DateTime(
+                                _selectedDate.year,
+                                _selectedDate.month,
+                                _selectedDate.day,
+                              );
+                              _appliedSportType = _sportType;
+                              _appliedFacilityId = _selectedFacilityId;
+                              _appliedIndoorOnly = _indoorOnly;
+                              _selectedCourtNumber = 1;
+                              _selectedSlotIds.clear();
+                              _slotPage = 1;
+                            });
+                          },
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('Search availability'),
+                  ),
+                ),
                 const SizedBox(height: 18),
-                _SectionTitle(title: resourceTitle, tiny: tiny),
+                _SectionTitle(title: 'Select Venue', tiny: tiny),
                 const SizedBox(height: 10),
                 if (facilities.isEmpty)
-                  const Text('No fields/tables available for this date.')
+                  const Text('No venues available for this date.')
+                else
+                  DropdownButtonFormField<String>(
+                    value: selectedFacilityId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    items: facilities.map((row) => DropdownMenuItem<String>(
+                      value: row.facilityId,
+                      child: Text(row.facilityName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (value) => setState(() {
+                      _selectedFacilityId = value;
+                      _selectedCourtNumber = 1;
+                      _selectedSlotIds.clear();
+                    }),
+                  ),
+                const SizedBox(height: 16),
+                _SectionTitle(title: resourceTitle, tiny: tiny),
+                const SizedBox(height: 10),
+                if (courtNumbers.isEmpty)
+                  const Text('No fields configured for this venue.')
                 else
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
-                    children: facilities.map((facilityRow) {
-                      final selected =
-                          facilityRow.facilityId == selectedFacilityId;
-                      return ChoiceChip(
-                        label: Text(facilityRow.facilityName),
-                        selected: selected,
-                        showCheckmark: false,
-                        selectedColor: const Color(0xFF111827),
-                        labelStyle: TextStyle(
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF4B5563),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        onSelected: (_) {
-                          setState(() {
-                            _selectedFacilityId = facilityRow.facilityId;
-                            _selectedSlotIds.clear();
-                          });
-                        },
-                      );
-                    }).toList(),
+                    children: courtNumbers.map((number) => ChoiceChip(
+                      label: Text('${isBilliard ? 'Table' : 'Field'} $number'),
+                      selected: number == selectedCourtNumber,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() {
+                        _selectedCourtNumber = number;
+                        _selectedSlotIds.clear();
+                      }),
+                    )).toList(),
                   ),
                 const SizedBox(height: 18),
                 _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),
                 const SizedBox(height: 10),
-                if (selectedFacilityRows.isEmpty)
+                if (selectedCourtRows.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Text(
@@ -614,7 +732,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       return GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: selectedFacilityRows.length,
+                        itemCount: selectedCourtRows.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
                           crossAxisSpacing: 10,
@@ -622,7 +740,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                           childAspectRatio: compact ? 2.4 : 2.7,
                         ),
                         itemBuilder: (context, index) {
-                          final slot = selectedFacilityRows[index];
+                          final slot = selectedCourtRows[index];
                           final isPast = slot.startAt.isBefore(now);
                           final selected = effectiveSelectedIds.contains(
                             slot.slotId,
@@ -686,7 +804,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '${selectedSlots.length} hour slot(s) • Total \$${total.toStringAsFixed(2)}',
+                          '${totalHours.toStringAsFixed(2)} hour(s) • Total USD ${total.toStringAsFixed(2)}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],

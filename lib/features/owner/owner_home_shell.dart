@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -115,19 +119,20 @@ class _OwnerHomeShellState extends ConsumerState<OwnerHomeShell> {
       body: AppPageFrame(
         child: IndexedStack(index: _index, children: pages),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: (value) => setState(() => _index = value),
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
             icon: Icon(Icons.space_dashboard_outlined),
             label: 'Overview',
           ),
-          NavigationDestination(
+          BottomNavigationBarItem(
             icon: Icon(Icons.history_outlined),
             label: 'History',
           ),
-          NavigationDestination(
+          BottomNavigationBarItem(
             icon: Icon(Icons.stadium_outlined),
             label: 'Venues',
           ),
@@ -1048,18 +1053,115 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider);
   }
 
+  Future<LatLng?> _pickVenueLocation(
+    LatLng initialLocation, {
+    bool requireTap = false,
+  }) {
+    LatLng selected = initialLocation;
+    bool hasSelection = !requireTap;
+    return showDialog<LatLng>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Pin your venue location'),
+          content: SizedBox(
+            width: MediaQuery.sizeOf(context).width * 0.72,
+            height: 340,
+            child: Column(
+              children: [
+                const Text('Tap the map to place or move the venue pin.'),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: initialLocation,
+                      initialZoom: 14,
+                      onTap: (_, point) => setDialogState(() {
+                        selected = point;
+                        hasSelection = true;
+                      }),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.my_project',
+                      ),
+                      MarkerLayer(
+                        markers: hasSelection
+                            ? [
+                                Marker(
+                                  point: selected,
+                                  width: 44,
+                                  height: 44,
+                                  child: const Icon(
+                                    Icons.location_pin,
+                                    size: 42,
+                                    color: Color(0xFFE11D48),
+                                  ),
+                                ),
+                              ]
+                            : const [],
+                      ),
+                      RichAttributionWidget(
+                        attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hasSelection
+                      ? 'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}'
+                      : 'Tap the map to choose a location',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: hasSelection
+                  ? () => Navigator.of(dialogContext).pop(selected)
+                  : null,
+              child: const Text('Use this location'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showAddVenueDialog() async {
     final session = ref.read(authSessionProvider);
     if (session == null) {
       return;
     }
 
+    final api = ref.read(apiClientProvider);
+    Map<String, dynamic> ownerProfile = {};
+    try {
+      ownerProfile = await api.getMap('/api/auth/me/', token: session.token);
+    } catch (_) {
+      // Keep the form usable if the profile request is temporarily unavailable.
+    }
+    if (!mounted) return;
+
     final nameCtrl = TextEditingController();
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descriptionCtrl = TextEditingController();
-    final latitudeCtrl = TextEditingController(text: '11.5564');
-    final longitudeCtrl = TextEditingController(text: '104.9282');
+    final phoneCtrl = TextEditingController(
+      text: (ownerProfile['contact_phone'] as String?) ?? '',
+    );
+    final openingHoursCtrl = TextEditingController();
+    final courtCountCtrl = TextEditingController(text: '1');
+    List<XFile> selectedVenueImages = [];
+    LatLng selectedLocation = const LatLng(11.5564, 104.9282);
+    bool locationPicked = false;
     bool isIndoor = false;
     String sportType = _sportTypes.first;
 
@@ -1076,6 +1178,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                   children: [
                     TextField(
                       controller: nameCtrl,
+                      textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
                         labelText: 'Venue Name',
                       ),
@@ -1083,7 +1186,30 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: locationCtrl,
-                      decoration: const InputDecoration(labelText: 'Location'),
+                      decoration: const InputDecoration(labelText: 'Address / area'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: 'Venue contact phone (optional)'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: openingHoursCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Opening hours (e.g. 08:00-22:00)',
+                        helperText: 'Use 24-hour time. This creates the bookable hourly slots.',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: courtCountCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Number of fields / courts',
+                        helperText: 'Customers will choose Field 1, Field 2, etc.',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
@@ -1118,39 +1244,69 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: descriptionCtrl,
+                      maxLines: 3,
+                      minLines: 1,
                       decoration: const InputDecoration(
                         labelText: 'Description (optional)',
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: latitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Latitude',
-                            ),
-                          ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await ImagePicker().pickMultiImage(
+                          imageQuality: 75,
+                          maxWidth: 1200,
+                        );
+                        if (picked.isNotEmpty) {
+                          setDialogState(() {
+                            selectedVenueImages = picked.take(6).toList();
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text('Add venue photos (${selectedVenueImages.length}/6)'),
+                    ),
+                    if (selectedVenueImages.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: selectedVenueImages
+                              .map((photo) => Chip(
+                                    avatar: const Icon(Icons.image_outlined, size: 16),
+                                    label: SizedBox(
+                                      width: 130,
+                                      child: Text(
+                                        photo.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    onDeleted: () => setDialogState(
+                                      () => selectedVenueImages.remove(photo),
+                                    ),
+                                  ))
+                              .toList(),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: longitudeCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                              signed: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Longitude',
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await _pickVenueLocation(selectedLocation, requireTap: true);
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedLocation = picked;
+                            locationPicked = true;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Choose location on map'),
+                    ),
+                    Text(
+                      '${selectedLocation.latitude.toStringAsFixed(5)}, ${selectedLocation.longitude.toStringAsFixed(5)}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 6),
                     SwitchListTile(
@@ -1183,18 +1339,68 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       return;
     }
 
+    final parsedPrice = double.tryParse(priceCtrl.text.trim());
+    final parsedCourtCount = int.tryParse(courtCountCtrl.text.trim());
+    if (nameCtrl.text.trim().isEmpty ||
+        locationCtrl.text.trim().isEmpty ||
+        parsedPrice == null ||
+        parsedPrice <= 0 ||
+        parsedCourtCount == null || parsedCourtCount < 1 || parsedCourtCount > 100 ||
+        openingHoursCtrl.text.trim().isEmpty ||
+        !locationPicked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter the venue name, address, valid price and opening hours, then choose its map pin.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _savingNewVenue = true);
     try {
       final api = ref.read(apiClientProvider);
+      final uploadedImageUrls = <String>[];
+      for (final photo in selectedVenueImages) {
+        final bytes = await photo.readAsBytes();
+        if (bytes.length > 1800 * 1024) {
+          throw Exception('${photo.name} is larger than 1.8 MB. Choose a smaller image.');
+        }
+        final extension = photo.name.split('.').last.toLowerCase();
+        final contentType = photo.mimeType ??
+            (extension == 'png'
+                ? 'image/png'
+                : extension == 'webp'
+                    ? 'image/webp'
+                    : 'image/jpeg');
+        final upload = await api.postJson(
+          '/api/facilities/owner/upload-image/',
+          {
+            'file_name': photo.name,
+            'content_type': contentType,
+            'image_base64': base64Encode(bytes),
+          },
+          token: session.token,
+        );
+        final url = (upload['url'] as String? ?? '').trim();
+        if (url.isEmpty) {
+          throw Exception('The server did not return an image URL for ${photo.name}.');
+        }
+        uploadedImageUrls.add(url);
+      }
       final response = await api.postJson('/api/facilities/owner/', {
-        'name': nameCtrl.text,
-        'location_name': locationCtrl.text,
+        'name': nameCtrl.text.trim(),
+        'location_name': locationCtrl.text.trim(),
         'sport_type': sportType,
         'base_price_per_hour': priceCtrl.text,
-        'description': descriptionCtrl.text,
-        'latitude': latitudeCtrl.text,
-        'longitude': longitudeCtrl.text,
+        'description': descriptionCtrl.text.trim(),
+        'contact_phone': phoneCtrl.text.trim(),
+        'opening_hours': openingHoursCtrl.text.trim(),
+        'court_count': parsedCourtCount,
+        'latitude': selectedLocation.latitude,
+        'longitude': selectedLocation.longitude,
         'is_indoor': isIndoor,
+        'image_url': uploadedImageUrls.isEmpty ? '' : uploadedImageUrls.first,
+        'gallery_image_urls': uploadedImageUrls,
       }, token: session.token);
       final createdFacility = _facilityFromResponse(response);
       if (createdFacility != null) {
@@ -1307,13 +1513,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: facility.basePricePerHour.toStringAsFixed(2),
     );
     final descriptionCtrl = TextEditingController(text: facility.description);
-    final latitudeCtrl = TextEditingController(
-      text: facility.latitude.toString(),
-    );
-    final longitudeCtrl = TextEditingController(
-      text: facility.longitude.toString(),
-    );
+    final phoneCtrl = TextEditingController(text: facility.contactPhone);
+    final openingHoursCtrl = TextEditingController(text: facility.openingHours);
     final imageUrlCtrl = TextEditingController(text: facility.imageUrl ?? '');
+    LatLng selectedLocation = LatLng(facility.latitude, facility.longitude);
     bool isIndoor = facility.isIndoor;
     String sportType = _sportTypes.contains(facility.sportType)
         ? facility.sportType
@@ -1373,40 +1576,38 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                   ),
                   const SizedBox(height: 8),
                   TextField(
-                    controller: imageUrlCtrl,
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Contact phone'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: openingHoursCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Image URL (optional)',
+                      labelText: 'Opening hours (e.g. 08:00-22:00)',
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: latitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Latitude',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: longitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Longitude',
-                          ),
-                        ),
-                      ),
-                    ],
+                  TextField(
+                    controller: imageUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Cover image URL (optional)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await _pickVenueLocation(selectedLocation);
+                      if (picked != null) {
+                        setDialogState(() => selectedLocation = picked);
+                      }
+                    },
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Change location on map'),
+                  ),
+                  Text(
+                    '${selectedLocation.latitude.toStringAsFixed(5)}, ${selectedLocation.longitude.toStringAsFixed(5)}',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 6),
                   SwitchListTile(
@@ -1448,9 +1649,11 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             'sport_type': sportType,
             'base_price_per_hour': priceCtrl.text,
             'description': descriptionCtrl.text,
+            'contact_phone': phoneCtrl.text,
+            'opening_hours': openingHoursCtrl.text,
             'image_url': imageUrlCtrl.text,
-            'latitude': latitudeCtrl.text,
-            'longitude': longitudeCtrl.text,
+            'latitude': selectedLocation.latitude,
+            'longitude': selectedLocation.longitude,
             'is_indoor': isIndoor,
           }, token: session.token);
       final updatedFacility = _facilityFromResponse(response);
@@ -1663,6 +1866,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     Expanded(
                       child: Text(
                         'Create a new venue and set its price. You can update pricing anytime.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.grey.shade700,
                           fontWeight: FontWeight.w600,
@@ -1777,12 +1982,16 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             ),
             title: Text(
               item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             subtitle: Text(
               isArchived
                   ? '${item.locationName} • ${item.sportType.toUpperCase()} • ARCHIVED'
                   : '${item.locationName} • ${item.sportType.toUpperCase()}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,

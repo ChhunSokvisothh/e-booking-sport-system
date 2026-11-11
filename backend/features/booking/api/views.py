@@ -1,7 +1,8 @@
-from datetime import timezone as dt_timezone
+from datetime import timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import models, transaction
+from django.core import signing
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status, viewsets
@@ -11,7 +12,11 @@ from rest_framework.response import Response
 
 from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
-from features.booking.api.telegram_invoices import deliver_paid_booking_invoice, retry_telegram_invoice
+from features.booking.api.telegram_invoices import (
+    deliver_paid_bookings_invoice_async,
+    public_booking_invoice,
+    retry_telegram_invoice,
+)
 from global_utils.view_helpers import (
     PAYMENT_WINDOW_MINUTES,
     _create_confirmed_booking_from_target,
@@ -23,6 +28,7 @@ from global_utils.view_helpers import (
     _sync_to_supabase_async,
     _target_option_chunks,
     _uuid_from_user,
+    _is_owner_user,
 )
 
 class BookingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -32,7 +38,7 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
+        if not _is_owner_user(self.request.user):
             user_uuid = _uuid_from_user(self.request.user)
             _release_expired_pending_bookings(user_uuid=user_uuid)
             qs = qs.filter(user_id=user_uuid)
@@ -65,6 +71,50 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def owner_checkin_endpoint(request):
+    if not _is_owner_user(request.user):
+        return Response({'error': 'Venue owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    token = str(request.data.get('token') or '').strip()
+    if not token:
+        return Response({'error': 'A booking QR token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        payload = signing.loads(token, salt='booking-checkin')
+        booking_id = int(payload.get('booking_id'))
+    except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError, AttributeError):
+        return Response({'error': 'This QR code is invalid or has been altered.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().select_related('facility').get(id=booking_id)
+            if not request.user.is_superuser and booking.facility.owner_user_id != _uuid_from_user(request.user):
+                return Response({'error': 'This booking belongs to another venue.'}, status=status.HTTP_403_FORBIDDEN)
+            if booking.status != BookingStatus.CONFIRMED or booking.payment_status != PaymentStatus.MOCK_PAID:
+                return Response({'error': 'Only paid, confirmed bookings can be checked in.'}, status=status.HTTP_409_CONFLICT)
+            if booking.checked_in_at is not None:
+                return Response({
+                    'error': 'This booking has already been checked in.',
+                    'checked_in_at': booking.checked_in_at,
+                }, status=status.HTTP_409_CONFLICT)
+            now = timezone.now()
+            if now < booking.start_at - timedelta(hours=2) or now > booking.end_at:
+                return Response({'error': 'Check-in is available from 2 hours before the booking until its end time.'}, status=status.HTTP_409_CONFLICT)
+            booking.checked_in_at = now
+            booking.checked_in_by = request.user
+            booking.save(update_fields=['checked_in_at', 'checked_in_by', 'updated_at'])
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'type': 'booking_checked_in',
+        'booking_id': booking.id,
+        'facility_name': booking.facility.name,
+        'checked_in_at': booking.checked_in_at,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def manual_booking_endpoint(request):
     slot_id = request.data.get('slot_id')
     if slot_id in (None, ''):
@@ -79,12 +129,21 @@ def manual_booking_endpoint(request):
     except (TimeSlot.DoesNotExist, ValueError, TypeError):
         return Response({'error': 'Slot not found or no longer available.'}, status=status.HTTP_404_NOT_FOUND)
 
-    price = Decimal(str(slot.facility.base_price_per_hour))
+    duration_hours = (
+        Decimal(str((slot.end_at - slot.start_at).total_seconds())) / Decimal('3600')
+    ).quantize(Decimal('0.01'))
+    if duration_hours <= Decimal('0.00'):
+        return Response({'error': 'The selected slot has an invalid duration.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    price = (
+        Decimal(str(slot.facility.base_price_per_hour)) * duration_hours
+    ).quantize(Decimal('0.01'))
     target = {
-        'option_id': f'{slot.facility_id}:{slot.id}:1',
+        'option_id': f'{slot.facility_id}:{slot.id}:{format(duration_hours, "f")}',
         'facility_name': slot.facility.name,
         'start_at': slot.start_at.isoformat(),
-        'duration_hours': 1,
+        'end_at': slot.end_at.isoformat(),
+        'duration_hours': float(duration_hours),
         'base_price': str(price),
         'weather_discount': '0.00',
         'empty_slot_discount': '0.00',
@@ -285,6 +344,8 @@ def mock_payment_endpoint(request):
         for i in range(1, len(ordered_slots)):
             if ordered_slots[i - 1].end_at != ordered_slots[i].start_at:
                 return Response({'error': 'Selected duration is no longer available. Please refresh and retry payment.'}, status=status.HTTP_409_CONFLICT)
+            if ordered_slots[i - 1].court_number != ordered_slots[i].court_number:
+                return Response({'error': 'A multi-hour booking must stay on the same field. Please select the time again.'}, status=status.HTTP_409_CONFLICT)
 
         slot = ordered_slots[0]
         slot_end = ordered_slots[-1].end_at
@@ -350,6 +411,8 @@ def mock_payment_endpoint(request):
             ).first()
             if coupon is None:
                 return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+            if coupon.owner_user_id and coupon.owner_user_id != slot.facility.owner_user_id:
+                return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
             discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
 
         expected_payable_amount = (expected_quote_amount * (Decimal('1.00') - discount_ratio)).quantize(Decimal('0.01'))
@@ -421,8 +484,7 @@ def mock_payment_endpoint(request):
             if slot_for_sync is not None:
                 _sync_to_supabase_async(slot=slot_for_sync, booking=booking)
 
-        for paid_booking in created_bookings:
-            deliver_paid_booking_invoice(paid_booking.id)
+        deliver_paid_bookings_invoice_async([booking.id for booking in created_bookings])
 
         return Response(
             {
@@ -464,7 +526,7 @@ def mock_payment_endpoint(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot'))
+    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot', 'facility'))
     if len(bookings) != len(normalized_ids):
         return Response({'error': 'one or more bookings not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -485,6 +547,8 @@ def mock_payment_endpoint(request):
         ).first()
         if coupon is None:
             return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+        if coupon.owner_user_id and any(booking.facility.owner_user_id != coupon.owner_user_id for booking in bookings):
+            return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
         discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
         applied_coupon_code = coupon.code
 
@@ -521,8 +585,7 @@ def mock_payment_endpoint(request):
     for slot, booking in zip(slots_to_sync, bookings_to_sync):
         _sync_to_supabase_async(slot=slot, booking=booking)
 
-    for paid_booking in bookings_to_sync:
-        deliver_paid_booking_invoice(paid_booking.id)
+    deliver_paid_bookings_invoice_async([booking.id for booking in bookings_to_sync])
 
     return Response(
         {

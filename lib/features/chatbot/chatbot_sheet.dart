@@ -329,6 +329,7 @@ class _ChatbotSheetState extends ConsumerState<ChatbotSheet> {
       MaterialPageRoute(
         builder: (_) => MockPaymentScreen(
           bookingId: bookingId,
+          facilityId: int.tryParse((effectiveSuggestion?.optionId ?? '').split(':').first),
           chatOption: chatOption,
           paymentQuote: paymentQuote,
           bookingSource: 'chatbot',

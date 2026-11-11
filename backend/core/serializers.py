@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.core import signing
 
 from .models import Booking, Coupon, Facility, TimeSlot
 
@@ -28,11 +29,10 @@ class FacilitySerializer(serializers.ModelSerializer):
             'cancellation_policy',
             'court_count',
             'owner_user_id',
-
-            'owner_user_id',
             'is_active',
             'archived_at',
         ]
+        read_only_fields = ['rating', 'owner_user_id']
 
 
 class TimeSlotSerializer(serializers.ModelSerializer):
@@ -47,6 +47,7 @@ class TimeSlotSerializer(serializers.ModelSerializer):
             'facility',
             'start_at',
             'end_at',
+            'court_number',
             'max_bookings',
             'current_bookings',
             'is_open',
@@ -58,6 +59,11 @@ class TimeSlotSerializer(serializers.ModelSerializer):
 
 
 class BookingSerializer(serializers.ModelSerializer):
+    checkin_token = serializers.SerializerMethodField()
+
+    def get_checkin_token(self, obj):
+        return signing.dumps({'booking_id': obj.id}, salt='booking-checkin')
+
     facility = FacilitySerializer(read_only=True)
     time_slot = TimeSlotSerializer(read_only=True)
 
@@ -83,6 +89,8 @@ class BookingSerializer(serializers.ModelSerializer):
             'booking_source',
             'chatbot_session_id',
             'created_at',
+            'checkin_token',
+            'checked_in_at',
         ]
 
 

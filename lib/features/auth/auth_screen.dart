@@ -5,6 +5,7 @@ import 'auth_controller.dart';
 import '../booking/home_shell.dart';
 import '../owner/owner_home_shell.dart';
 import 'data/auth_session.dart';
+import 'owner_registration_payment_screen.dart';
 import '../../utils/validators.dart';
 import '../../services/telegram_auth_service.dart';
 
@@ -19,7 +20,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
-  final _venueNameCtrl = TextEditingController();
   final _contactPhoneCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSignUp = false;
@@ -38,13 +38,27 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
-    _venueNameCtrl.dispose();
     _contactPhoneCtrl.dispose();
     super.dispose();
   }
 
+  Future<Map<String, String>?> _showOwnerPaymentScreen() {
+    return Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(
+        builder: (_) => const OwnerRegistrationPaymentScreen(),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    final ownerPayment = _isSignUp && _isOwnerRegistration
+        ? await _showOwnerPaymentScreen()
+        : null;
+    if (_isSignUp && _isOwnerRegistration && ownerPayment == null) {
       return;
     }
 
@@ -57,8 +71,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           await auth.ownerSignUp(
             email: _emailCtrl.text.trim(),
             password: _passwordCtrl.text.trim(),
-            venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
+            paymentProvider: ownerPayment!['provider']!,
+            paymentChannel: ownerPayment!['channel']!,
           );
         } else {
           await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());
@@ -213,7 +228,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     emailCtrl: _emailCtrl,
                                     passwordCtrl: _passwordCtrl,
                                     confirmCtrl: _confirmCtrl,
-                                    venueNameCtrl: _venueNameCtrl,
                                     contactPhoneCtrl: _contactPhoneCtrl,
                                     onTelegramLogin: _telegramLogin,
                                     onPasswordChanged: () => setState(() {}),
@@ -255,7 +269,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   emailCtrl: _emailCtrl,
                                   passwordCtrl: _passwordCtrl,
                                   confirmCtrl: _confirmCtrl,
-                                  venueNameCtrl: _venueNameCtrl,
                                   contactPhoneCtrl: _contactPhoneCtrl,
                                   onTelegramLogin: _telegramLogin,
                                   onPasswordChanged: () => setState(() {}),
@@ -386,7 +399,6 @@ class _AuthCard extends StatelessWidget {
     required this.emailCtrl,
     required this.passwordCtrl,
     required this.confirmCtrl,
-    required this.venueNameCtrl,
     required this.contactPhoneCtrl,
     required this.onTelegramLogin,
     required this.onPasswordChanged,
@@ -408,7 +420,6 @@ class _AuthCard extends StatelessWidget {
   final TextEditingController emailCtrl;
   final TextEditingController passwordCtrl;
   final TextEditingController confirmCtrl;
-  final TextEditingController venueNameCtrl;
   final TextEditingController contactPhoneCtrl;
   final VoidCallback onTelegramLogin;
   final VoidCallback onPasswordChanged;
@@ -471,7 +482,7 @@ class _AuthCard extends StatelessWidget {
               Text(
                 isSignUp
                     ? isOwnerRegistration
-                        ? 'Create an owner account to manage your sports venue.'
+                        ? 'Pay the simulated \$20 registration fee to activate your owner account immediately.'
                         : 'Use your email to join and start booking.'
                     : 'Login to access your account homepage.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -501,21 +512,6 @@ class _AuthCard extends StatelessWidget {
                 validator: Validators.password,
               ),
               if (isSignUp && isOwnerRegistration) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: venueNameCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Venue name',
-                    prefixIcon: Icon(Icons.storefront_outlined),
-                  ),
-                  validator: (value) {
-                    if ((value ?? '').trim().isEmpty) {
-                      return 'Venue name is required';
-                    }
-                    return null;
-                  },
-                ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: contactPhoneCtrl,
@@ -566,7 +562,13 @@ class _AuthCard extends StatelessWidget {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(isSignUp ? 'Create account' : 'Login'),
+                      : Text(
+                          isSignUp
+                              ? (isOwnerRegistration
+                                  ? 'Pay \$20.00 & Create Owner Account'
+                                  : 'Create account')
+                              : 'Login',
+                        ),
                 ),
               ),
               if (!isSignUp) ...[

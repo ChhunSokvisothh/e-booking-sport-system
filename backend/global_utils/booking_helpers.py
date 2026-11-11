@@ -138,6 +138,8 @@ def _is_target_currently_available(target):
     for i in range(1, len(ordered)):
         if ordered[i - 1].end_at != ordered[i].start_at:
             return False
+        if ordered[i - 1].court_number != ordered[i].court_number:
+            return False
 
     for slot in ordered:
         if Booking.objects.filter(time_slot_id=slot.id).exclude(status=BookingStatus.CANCELLED).exists():
@@ -173,6 +175,8 @@ def _canonicalize_target_for_quote(target):
 
     for i in range(1, len(ordered_slots)):
         if ordered_slots[i - 1].end_at != ordered_slots[i].start_at:
+            return target
+        if ordered_slots[i - 1].court_number != ordered_slots[i].court_number:
             return target
 
     slot = ordered_slots[0]
@@ -329,6 +333,8 @@ def _create_confirmed_booking_from_target(target, user_uuid, booking_source=Book
         for i in range(1, len(ordered_slots)):
             if ordered_slots[i - 1].end_at != ordered_slots[i].start_at:
                 raise ValueError('Requested duration is no longer available as consecutive slots.')
+            if ordered_slots[i - 1].court_number != ordered_slots[i].court_number:
+                raise ValueError('A multi-hour booking must stay on the same field.')
 
         slot_price = Decimal(str(target.get('final_price') or target.get('base_price') or '0'))
         per_slot_price = (slot_price / Decimal(len(ordered_slots))).quantize(Decimal('0.01'))

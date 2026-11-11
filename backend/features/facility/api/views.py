@@ -414,6 +414,7 @@ def slot_availability_endpoint(request):
                 current_bookings=current,
                 max_bookings=max_bookings,
                 is_open=is_open,
+                court_number=(local_slot.court_number if local_slot is not None else int(row.get('court_number') or 1)),
                 slot_version=slot_version,
                 reservation_hold_until=hold_until,
                 booked_by_me=slot_id in booked_slot_ids,
@@ -437,6 +438,7 @@ def slot_availability_endpoint(request):
                 current_bookings=slot.current_bookings,
                 max_bookings=slot.max_bookings,
                 is_open=slot.is_open,
+                court_number=slot.court_number,
                 slot_version=slot.slot_version,
                 reservation_hold_until=slot.reservation_hold_until,
                 booked_by_me=slot_id in booked_slot_ids,
@@ -456,6 +458,7 @@ def slot_availability_endpoint(request):
                     current_bookings=slot.current_bookings,
                     max_bookings=slot.max_bookings,
                     is_open=slot.is_open,
+                    court_number=slot.court_number,
                     slot_version=slot.slot_version,
                     reservation_hold_until=slot.reservation_hold_until,
                     booked_by_me=str(slot.id) in booked_slot_ids,
@@ -488,6 +491,7 @@ def slot_availability_endpoint(request):
         entry['slots'].append(
             {
                 'slot_id': row['slot_id'],
+                'court_number': row['court_number'],
                 'start_at': row['start_at'],
                 'end_at': row['end_at'],
                 'current_bookings': row['current_bookings'],

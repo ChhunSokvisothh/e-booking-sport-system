@@ -1135,7 +1135,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     if (!mounted) return;
 
     final nameCtrl = TextEditingController(
-      text: (ownerProfile['venue_name'] as String?) ?? '',
+      text: (_ownerRows?.isEmpty ?? true)
+          ? ((ownerProfile['venue_name'] as String?) ?? '')
+          : '',
     );
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();

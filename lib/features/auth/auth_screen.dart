@@ -43,8 +43,62 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     super.dispose();
   }
 
+  Future<Map<String, String>?> _showOwnerPaymentDialog() {
+    const methods = <Map<String, String>>[
+      {'provider': 'Bakong QR', 'channel': 'local_bank'},
+      {'provider': 'ABA Bank', 'channel': 'local_bank'},
+      {'provider': 'Visa', 'channel': 'card'},
+      {'provider': 'Mastercard', 'channel': 'card'},
+      {'provider': 'PayPal', 'channel': 'international_bank'},
+    ];
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Activate your venue owner account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Registration fee'),
+            const SizedBox(height: 4),
+            const Text(
+              '\$20.00 USD',
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose a payment method. This is a simulated payment for the prototype; no real money will be charged.',
+            ),
+            const SizedBox(height: 12),
+            ...methods.map(
+              (method) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: Text(method['provider']!),
+                onTap: () => Navigator.of(dialogContext).pop(method),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    final ownerPayment = _isSignUp && _isOwnerRegistration
+        ? await _showOwnerPaymentDialog()
+        : null;
+    if (_isSignUp && _isOwnerRegistration && ownerPayment == null) {
       return;
     }
 
@@ -59,6 +113,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             password: _passwordCtrl.text.trim(),
             venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
+            paymentProvider: ownerPayment!['provider']!,
+            paymentChannel: ownerPayment['channel']!,
           );
         } else {
           await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());

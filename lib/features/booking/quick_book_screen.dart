@@ -481,7 +481,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       Text(
                         selectedSlots.isEmpty
                             ? 'Choose one or multiple hours'
-                            : '${selectedSlots.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s) • \${total.toStringAsFixed(2)}',
+                            : '${selectedSlots.length} slot(s) selected • ${totalHours.toStringAsFixed(2)} hour(s) • USD ${total.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w600,
@@ -700,7 +700,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '${totalHours.toStringAsFixed(2)} hour(s) • Total \${total.toStringAsFixed(2)}',
+                          '${totalHours.toStringAsFixed(2)} hour(s) • Total USD ${total.toStringAsFixed(2)}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],

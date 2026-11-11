@@ -1,4 +1,4 @@
-from datetime import timezone as dt_timezone
+from datetime import timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import models, transaction
@@ -97,7 +97,7 @@ def owner_checkin_endpoint(request):
                     'checked_in_at': booking.checked_in_at,
                 }, status=status.HTTP_409_CONFLICT)
             now = timezone.now()
-            if now < booking.start_at - timezone.timedelta(hours=2) or now > booking.end_at:
+            if now < booking.start_at - timedelta(hours=2) or now > booking.end_at:
                 return Response({'error': 'Check-in is available from 2 hours before the booking until its end time.'}, status=status.HTTP_409_CONFLICT)
             booking.checked_in_at = now
             booking.checked_in_by = request.user

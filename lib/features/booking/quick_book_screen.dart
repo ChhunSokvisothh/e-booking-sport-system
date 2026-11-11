@@ -129,11 +129,8 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
 
   Map<String, String> _buildQuery() {
     final formatter = DateFormat('yyyy-MM-dd');
-    // A venue, sport, or indoor filter narrows the result set enough to
-    // safely prefetch the whole visible week for instant date switching.
-    final hasDateRange = _appliedFacilityId != null ||
-        _appliedSportType != null ||
-        _appliedIndoorOnly;
+    // Preload the complete visible week once. Date-chip changes are then
+    // local filters and do not wait for another availability request.
     final today = DateTime.now();
     final rangeStart = DateTime(today.year, today.month, today.day);
     final rangeEnd = rangeStart.add(const Duration(days: 6));
@@ -142,18 +139,15 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
       // When a venue is selected, fetch the whole visible 7-day date strip once.
       // Date-chip changes then filter this cached result locally instead of
       // making another network request for every day.
-      if (hasDateRange) ...{
-        'start_date': formatter.format(rangeStart),
-        'end_date': formatter.format(rangeEnd),
-      } else
-        'date': formatter.format(_appliedDate),
+      'start_date': formatter.format(rangeStart),
+      'end_date': formatter.format(rangeEnd),
       ...?_appliedSportType == null ? null : {'sport_type': _appliedSportType!},
       ...?_appliedFacilityId == null
           ? null
           : {'facility_id': _appliedFacilityId!},
       ...?_appliedIndoorOnly ? {'is_indoor': 'true'} : null,
       'page': '1',
-      'page_size': hasDateRange ? '1000' : '100',
+      'page_size': '1000',
     };
   }
 

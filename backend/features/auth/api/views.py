@@ -71,10 +71,16 @@ def owner_signup(request):
     phone = (request.data.get('contact_phone') or '').strip()
     if not email or not password or not venue_name:
         return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not re.fullmatch(r'[^@\\s]+@[^@\\s]+\\.[^@\\s]+', email):
+        return Response({'error': 'Enter a valid email address.'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(venue_name) > 160:
+        return Response({'error': 'Venue name must be 160 characters or fewer.'}, status=status.HTTP_400_BAD_REQUEST)
     if len(password) < 8:
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _rate_limit_check(request, action='owner_signup_ip', identifier='all', limit=5, window_seconds=300):
+        return Response({'error': 'Too many owner registration attempts from this network. Please try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
     if not _rate_limit_check(request, action='owner_signup', identifier=email, limit=3, window_seconds=300):
-        return Response({'error': 'Too many owner registration attempts. Please try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        return Response({'error': 'Too many owner registration attempts for this email. Please try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
 
@@ -89,7 +95,12 @@ def owner_signup(request):
     except (InvalidOperation, TypeError, ValueError):
         return Response({'error': 'Invalid owner registration payment amount.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if payment_status != 'mock_paid' or not payment_channel or paid_amount != owner_fee:
+    if (
+        payment_status != 'mock_paid'
+        or payment_channel != 'mobile_banking'
+        or payment_provider not in {'ABA Pay', 'ACLEDA'}
+        or paid_amount != owner_fee
+    ):
         return Response({
             'error': 'Complete the $20.00 simulated owner registration payment before creating your account.',
             'required_amount': str(owner_fee),

@@ -159,7 +159,9 @@ def owner_facilities_endpoint(request):
         opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
         opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
         opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
-        if opening_end <= opening_start:
+        start_minutes = opening_start.hour * 60 + opening_start.minute
+        end_minutes = opening_end.hour * 60 + opening_end.minute
+        if end_minutes - start_minutes < 60:
             raise ValueError
     except (ValueError, TypeError):
         return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)
@@ -263,7 +265,9 @@ def owner_facility_detail_endpoint(request, facility_id):
             opening_start_raw, opening_end_raw = opening_hours.split('-', 1)
             opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
             opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
-            if opening_end <= opening_start:
+            start_minutes = opening_start.hour * 60 + opening_start.minute
+            end_minutes = opening_end.hour * 60 + opening_end.minute
+            if end_minutes - start_minutes < 60:
                 raise ValueError
         except (ValueError, TypeError):
             return Response({'error': 'opening_hours must use 24-hour format like 08:00-22:00'}, status=status.HTTP_400_BAD_REQUEST)

@@ -71,7 +71,7 @@ def owner_signup(request):
     phone = (request.data.get('contact_phone') or '').strip()
     if not email or not password or not venue_name:
         return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
-    if not re.fullmatch(r'[^@\\s]+@[^@\\s]+\\.[^@\\s]+', email):
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
         return Response({'error': 'Enter a valid email address.'}, status=status.HTTP_400_BAD_REQUEST)
     if len(venue_name) > 160:
         return Response({'error': 'Venue name must be 160 characters or fewer.'}, status=status.HTTP_400_BAD_REQUEST)

@@ -2,6 +2,9 @@
 import re
 import uuid
 import logging
+from decimal import Decimal, InvalidOperation
+
+from django.db import IntegrityError, transaction
 
 from django.contrib.auth import authenticate
 from django.utils import timezone
@@ -60,7 +63,14 @@ def auth_signup(request):
     return Response(_auth_payload(user, token), status=status.HTTP_201_CREATED)
 
 
-OWNER_REGISTRATION_FEE = 20.00
+OWNER_REGISTRATION_FEE = Decimal('20.00')
+OWNER_PAYMENT_METHODS = {
+    'Bakong QR': 'local_bank',
+    'ABA Bank': 'local_bank',
+    'Visa': 'card',
+    'Mastercard': 'card',
+    'PayPal': 'international_bank',
+}
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -73,8 +83,8 @@ def owner_signup(request):
     payment_provider = (request.data.get('payment_provider') or '').strip()
     payment_channel = (request.data.get('payment_channel') or '').strip().lower()
     try:
-        paid_amount = float(request.data.get('amount'))
-    except (TypeError, ValueError):
+        paid_amount = Decimal(str(request.data.get('amount')))
+    except (InvalidOperation, TypeError, ValueError):
         paid_amount = None
 
     if not email or not password or not venue_name:
@@ -83,29 +93,33 @@ def owner_signup(request):
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
-    if not payment_provider or payment_channel not in {'local_bank', 'card', 'international_bank'}:
-        return Response({'error': 'Choose a payment method to continue.'}, status=status.HTTP_400_BAD_REQUEST)
-    if paid_amount is None or round(paid_amount, 2) != OWNER_REGISTRATION_FEE:
-        return Response({'error': 'Owner registration payment amount is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+    if OWNER_PAYMENT_METHODS.get(payment_provider) != payment_channel:
+        return Response({'error': 'Choose a valid payment method to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+    if paid_amount != OWNER_REGISTRATION_FEE:
+        return Response({'error': 'Owner registration payment must be exactly $20.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # This is deliberately a simulated payment for the prototype. A real gateway
     # must replace this client-triggered confirmation before production.
-    user = User.objects.create_user(username=email, email=email, password=password)
-    OwnerApplication.objects.create(
-        user=user,
-        venue_name=venue_name,
-        contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
-    )
-    token, _ = Token.objects.get_or_create(user=user)
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(username=email, email=email, password=password)
+            OwnerApplication.objects.create(
+                user=user,
+                venue_name=venue_name,
+                contact_phone=phone,
+                status=OwnerApplication.Status.APPROVED,
+                reviewed_at=timezone.now(),
+            )
+            token, _ = Token.objects.get_or_create(user=user)
+    except IntegrityError:
+        return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
     return Response({
         **_auth_payload(user, token),
         'message': 'Simulated owner registration payment successful.',
         'payment_status': 'mock_paid',
         'payment_provider': payment_provider,
         'payment_channel': payment_channel,
-        'amount': f'{OWNER_REGISTRATION_FEE:.2f}',
+        'amount': str(OWNER_REGISTRATION_FEE),
         'currency': 'USD',
     }, status=status.HTTP_201_CREATED)
 

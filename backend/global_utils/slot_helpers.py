@@ -310,8 +310,26 @@ def _ensure_rolling_slot_window():
                 )
 
         if created_slots:
-            TimeSlot.objects.bulk_create(created_slots)
-            _sync_generated_slots_to_supabase_async(created_slots)
+            # Multiple API workers can refresh the same rolling window at once.
+            # Let the database uniqueness constraint discard duplicate inserts.
+            TimeSlot.objects.bulk_create(created_slots, ignore_conflicts=True)
+
+            # ignore_conflicts does not populate primary keys on inserted objects.
+            # Re-fetch the persisted rows before mirroring them to Supabase.
+            generated_keys = {
+                (slot.start_at, slot.end_at, slot.court_number)
+                for slot in created_slots
+            }
+            persisted_slots = [
+                slot
+                for slot in TimeSlot.objects.filter(
+                    facility=facility,
+                    start_at__gte=window_start,
+                    start_at__lt=window_end,
+                )
+                if (slot.start_at, slot.end_at, slot.court_number) in generated_keys
+            ]
+            _sync_generated_slots_to_supabase_async(persisted_slots)
 
 
 def _ensure_rolling_slot_window_cached():

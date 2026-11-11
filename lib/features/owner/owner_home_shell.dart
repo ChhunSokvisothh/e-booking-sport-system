@@ -1058,8 +1058,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Pin your venue location'),
           content: SizedBox(
-            width: 560,
-            height: 380,
+            width: MediaQuery.sizeOf(context).width * 0.72,
+            height: 340,
             child: Column(
               children: [
                 const Text('Tap the map to place or move the venue pin.'),

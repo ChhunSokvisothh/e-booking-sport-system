@@ -289,10 +289,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     }
 
     setState(() => _processing = true);
+    final bookingIds = <int>[];
 
     try {
       final api = ref.read(apiClientProvider);
-      final bookingIds = <int>[];
       for (final slot in sorted) {
         final id = await _createPendingBooking(api, session.token, slot);
         bookingIds.add(id);

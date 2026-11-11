@@ -1,15 +1,22 @@
 import html
+import os
 import threading
 from io import BytesIO
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
+from django.core import signing
 from django.db import transaction
+from django.http import HttpResponse
 from django.utils import timezone
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.lib import colors
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -17,6 +24,98 @@ from rest_framework.response import Response
 
 from core.models import Booking, BookingStatus, PaymentStatus, TelegramIdentity, TelegramInvoiceDelivery
 from global_utils.common import _uuid_from_user
+
+
+class _QRFlowable(Flowable):
+    def __init__(self, value, size=104):
+        super().__init__()
+        self.value = value
+        self.width = size
+        self.height = size
+        self.size = size
+
+    def draw(self):
+        widget = QrCodeWidget(self.value)
+        bounds = widget.getBounds()
+        width = bounds[2] - bounds[0]
+        height = bounds[3] - bounds[1]
+        drawing = Drawing(self.size, self.size, transform=[self.size / width, 0, 0, self.size / height, 0, 0])
+        drawing.add(widget)
+        from reportlab.graphics import renderPDF
+        renderPDF.draw(drawing, self.canv, 0, 0)
+
+
+def _public_invoice_url(bookings):
+    booking_ids = sorted({int(booking.id) for booking in bookings})
+    token = signing.dumps({'booking_ids': booking_ids}, salt='public-booking-invoice-v1', compress=True)
+    base_url = (
+        getattr(settings, 'PUBLIC_INVOICE_BASE_URL', '')
+        or os.getenv('PUBLIC_INVOICE_BASE_URL', '')
+        or getattr(settings, 'BACKEND_URL', '')
+    ).rstrip('/')
+    return f'{base_url}/api/public/invoice/{quote(token, safe="")}/' if base_url else ''
+
+
+def _directions_url(facility):
+    if facility.latitude and facility.longitude:
+        return f'https://www.google.com/maps/dir/?api=1&destination={facility.latitude},{facility.longitude}'
+    destination = quote(f'{facility.name}, {facility.location_name}')
+    return f'https://www.google.com/maps/dir/?api=1&destination={destination}'
+
+
+def _build_combined_invoice_pdf(bookings, receipt_id, invoice_url):
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=A4, title=f'Booking invoice {receipt_id}')
+    styles = getSampleStyleSheet()
+    safe = lambda value: html.escape(str(value))
+    facility = bookings[0].facility
+    total = sum((booking.final_price for booking in bookings), start=bookings[0].final_price * 0)
+    rows = [['Booking', 'Date', 'Time', 'Field/Table', 'Amount']]
+    for booking in bookings:
+        start, end = timezone.localtime(booking.start_at), timezone.localtime(booking.end_at)
+        court_label = 'Table' if facility.sport_type == 'billiard' else 'Field'
+        rows.append([
+            f'#{booking.id}',
+            start.strftime('%d %b %Y'),
+            f'{start:%H:%M}–{end:%H:%M}',
+            f'{court_label} {booking.time_slot.court_number}',
+            f'USD {booking.final_price:.2f}',
+        ])
+    table = Table(rows, repeatRows=1, colWidths=[55, 85, 90, 90, 80])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EEF7')),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#CBD5E1')),
+        ('PADDING', (0, 0), (-1, -1), 7),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    directions = _directions_url(facility)
+    story = [
+        Paragraph('E-Booking Sport System', styles['Title']),
+        Paragraph('Combined Booking Payment Invoice', styles['Heading2']),
+        Paragraph(f'<b>Receipt ID:</b> {safe(receipt_id)}', styles['BodyText']),
+        Paragraph(f'<b>Venue:</b> {safe(facility.name)}', styles['BodyText']),
+        Paragraph(f'<b>Address:</b> {safe(facility.location_name)}', styles['BodyText']),
+        Paragraph(f'<b>Sport:</b> {safe(facility.sport_type.title())}', styles['BodyText']),
+        Spacer(1, 12), table, Spacer(1, 12),
+        Paragraph(f'<b>Total paid:</b> USD {total:.2f}', styles['Heading2']),
+        Paragraph('<b>Payment status:</b> PAID', styles['BodyText']),
+        Spacer(1, 16),
+        Paragraph(f'<b>Venue directions:</b> <link href="{safe(directions)}" color="blue">Open directions in Google Maps</link>', styles['BodyText']),
+        Spacer(1, 14),
+    ]
+    if invoice_url:
+        story.extend([
+            Paragraph('<b>Scan to view this booking invoice</b>', styles['Heading3']),
+            Paragraph('The QR link is signed and expires after 30 days.', styles['BodyText']),
+            Spacer(1, 6),
+            _QRFlowable(invoice_url, size=112),
+            Paragraph(f'<link href="{safe(invoice_url)}" color="blue">Open secure online invoice</link>', styles['BodyText']),
+        ])
+    else:
+        story.append(Paragraph('Online invoice QR unavailable: configure PUBLIC_INVOICE_BASE_URL.', styles['Italic']))
+    doc.build(story)
+    output.seek(0)
+    return output
 
 
 def _build_invoice_pdf(booking, receipt_id):
@@ -172,35 +271,21 @@ def deliver_paid_bookings_invoice(booking_ids):
         try:
             response = requests.post(
                 f'{base}/sendMessage',
-                json={'chat_id': identity.telegram_user_id, 'text': '\\n'.join(lines), 'parse_mode': 'HTML'},
+                json={'chat_id': identity.telegram_user_id, 'text': '\n'.join(lines), 'parse_mode': 'HTML'},
                 timeout=10,
             )
             response.raise_for_status()
 
-            output = BytesIO()
-            doc = SimpleDocTemplate(output, pagesize=A4, title=f'Booking invoice {receipt_id}')
-            styles = getSampleStyleSheet()
-            safe = lambda value: html.escape(str(value))
-            rows = [['Booking', 'Date', 'Time', 'Field', 'Amount']]
-            for b in bookings:
-                start, end = timezone.localtime(b.start_at), timezone.localtime(b.end_at)
-                rows.append([f'#{b.id}', start.strftime('%d %b %Y'), f'{start:%H:%M}–{end:%H:%M}', f'Field {b.time_slot.court_number}', f'USD {b.final_price:.2f}'])
-            table = Table(rows, repeatRows=1)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EEF7')),
-                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#CBD5E1')),
-                ('PADDING', (0, 0), (-1, -1), 7),
-            ]))
-            story = [
-                Paragraph('E-Booking Sport System', styles['Title']),
-                Paragraph('Booking Payment Invoice', styles['Heading2']),
-                Paragraph(f'<b>Receipt ID:</b> {safe(receipt_id)}', styles['BodyText']),
-                Paragraph(f'<b>Venue:</b> {safe(bookings[0].facility.name)}', styles['BodyText']),
-                Spacer(1, 12), table, Spacer(1, 12),
-                Paragraph(f'<b>Total paid:</b> USD {total:.2f}', styles['Heading2']),
-            ]
-            doc.build(story)
-            output.seek(0)
+            invoice_url = _public_invoice_url(bookings)
+            output = _build_combined_invoice_pdf(bookings, receipt_id, invoice_url)
+            if invoice_url:
+                lines.append(f'Invoice: {html.escape(invoice_url)}')
+                response = requests.post(
+                    f'{base}/sendMessage',
+                    json={'chat_id': identity.telegram_user_id, 'text': '\\n'.join(lines), 'parse_mode': 'HTML'},
+                    timeout=10,
+                )
+                response.raise_for_status()
             response = requests.post(
                 f'{base}/sendDocument',
                 data={'chat_id': identity.telegram_user_id, 'caption': f'Invoice {receipt_id} — {len(bookings)} booking(s)'},

@@ -107,19 +107,30 @@ def _ensure_rolling_slot_window():
                 )
                 cursor = next_cursor
 
-        if not templates:
-            # Fallback timetable when no seed data exists for a facility.
-            for hour in [8, 10, 12, 14, 16, 18, 20]:
-                start_time = datetime.strptime(f'{hour:02d}:00', '%H:%M').time()
-                end_time = datetime.strptime(f'{hour + 2:02d}:00', '%H:%M').time()
-                templates.append(
-                    {
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration': timedelta(hours=2),
-                        'max_bookings': 3,
-                    }
-                )
+        if not templates and facility.opening_hours:
+            # New owner-created venues define their own operating window.
+            # Never invent generic 08:00-22:00 slots for a venue with no schedule.
+            try:
+                opening_raw, closing_raw = [
+                    value.strip()
+                    for value in facility.opening_hours.split('-', 1)
+                ]
+                opening_time = datetime.strptime(opening_raw, '%H:%M').time()
+                closing_time = datetime.strptime(closing_raw, '%H:%M').time()
+                opening_cursor = datetime.combine(window_start.date(), opening_time)
+                closing_cursor = datetime.combine(window_start.date(), closing_time)
+                if closing_cursor > opening_cursor:
+                    while opening_cursor + timedelta(hours=1) <= closing_cursor:
+                        next_cursor = opening_cursor + timedelta(hours=1)
+                        templates.append({
+                            'start_time': opening_cursor.time(),
+                            'end_time': next_cursor.time(),
+                            'duration': timedelta(hours=1),
+                            'max_bookings': 1,
+                        })
+                        opening_cursor = next_cursor
+            except (TypeError, ValueError):
+                templates = []
 
         template_map[facility.id] = templates
 

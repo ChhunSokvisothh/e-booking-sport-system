@@ -1,4 +1,5 @@
 import html
+import threading
 from io import BytesIO
 
 import requests
@@ -112,6 +113,15 @@ def deliver_paid_booking_invoice(booking_id):
         delivery.sent_at = None if error else timezone.now()
         delivery.save(update_fields=['attempts', 'last_error', 'status', 'sent_at', 'updated_at'])
     return {'status': delivery.status, 'receipt_id': receipt_id, 'error': error}
+
+
+def deliver_paid_booking_invoice_async(booking_id):
+    """Send Telegram receipts outside the payment request's critical path."""
+    threading.Thread(
+        target=deliver_paid_booking_invoice,
+        args=(booking_id,),
+        daemon=True,
+    ).start()
 
 
 @api_view(['POST'])

@@ -396,6 +396,7 @@ class DashboardUpcomingSlot {
       slotId: (json['slot_id'] as num).toInt(),
       facilityId: (json['facility_id'] as num).toInt(),
       facilityName: json['facility_name'] as String? ?? '-',
+      courtNumber: (json['court_number'] as num?)?.toInt() ?? 1,
       sportType: (json['sport_type'] as String? ?? 'unknown').toLowerCase(),
       isIndoor: json['is_indoor'] as bool? ?? false,
       startAt: DateTime.parse(json['start_at'] as String).toLocal(),
@@ -484,6 +485,7 @@ class LiveSlotAvailability {
     required this.slotId,
     required this.facilityId,
     required this.facilityName,
+    required this.courtNumber,
     required this.sportType,
     required this.startAt,
     required this.endAt,
@@ -503,6 +505,7 @@ class LiveSlotAvailability {
   final String slotId;
   final String facilityId;
   final String facilityName;
+  final int courtNumber;
   final String sportType;
   final DateTime startAt;
   final DateTime endAt;

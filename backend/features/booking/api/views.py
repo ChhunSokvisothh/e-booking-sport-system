@@ -11,7 +11,11 @@ from rest_framework.response import Response
 
 from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
-from features.booking.api.telegram_invoices import deliver_paid_bookings_invoice_async, retry_telegram_invoice
+from features.booking.api.telegram_invoices import (
+    deliver_paid_bookings_invoice_async,
+    public_booking_invoice,
+    retry_telegram_invoice,
+)
 from global_utils.view_helpers import (
     PAYMENT_WINDOW_MINUTES,
     _create_confirmed_booking_from_target,

@@ -630,7 +630,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 const SizedBox(height: 18),
                 _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),
                 const SizedBox(height: 10),
-                if (selectedFacilityRows.isEmpty)
+                if (selectedCourtRows.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Text(
@@ -647,7 +647,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                       return GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: selectedFacilityRows.length,
+                        itemCount: selectedCourtRows.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
                           crossAxisSpacing: 10,
@@ -655,7 +655,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                           childAspectRatio: compact ? 2.4 : 2.7,
                         ),
                         itemBuilder: (context, index) {
-                          final slot = selectedFacilityRows[index];
+                          final slot = selectedCourtRows[index];
                           final isPast = slot.startAt.isBefore(now);
                           final selected = effectiveSelectedIds.contains(
                             slot.slotId,

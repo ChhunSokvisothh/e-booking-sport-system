@@ -23,6 +23,7 @@ from global_utils.view_helpers import (
     _sync_to_supabase_async,
     _target_option_chunks,
     _uuid_from_user,
+    _is_owner_user,
 )
 
 class BookingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -32,7 +33,7 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
+        if not _is_owner_user(self.request.user):
             user_uuid = _uuid_from_user(self.request.user)
             _release_expired_pending_bookings(user_uuid=user_uuid)
             qs = qs.filter(user_id=user_uuid)
@@ -350,6 +351,8 @@ def mock_payment_endpoint(request):
             ).first()
             if coupon is None:
                 return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+            if coupon.owner_user_id and coupon.owner_user_id != slot.facility.owner_user_id:
+                return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
             discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
 
         expected_payable_amount = (expected_quote_amount * (Decimal('1.00') - discount_ratio)).quantize(Decimal('0.01'))
@@ -464,7 +467,7 @@ def mock_payment_endpoint(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot'))
+    bookings = list(Booking.objects.filter(id__in=normalized_ids, user_id=user_uuid).select_related('time_slot', 'facility'))
     if len(bookings) != len(normalized_ids):
         return Response({'error': 'one or more bookings not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -485,6 +488,8 @@ def mock_payment_endpoint(request):
         ).first()
         if coupon is None:
             return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+        if coupon.owner_user_id and any(booking.facility.owner_user_id != coupon.owner_user_id for booking in bookings):
+            return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
         discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
         applied_coupon_code = coupon.code
 

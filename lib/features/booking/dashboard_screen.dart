@@ -786,16 +786,21 @@ class _VenueCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       _PillBadge(
-                        child: Row(
-                          children: [
-                            const Icon(Icons.star, size: 16),
-                            const SizedBox(width: 5),
-                            Text(
-                              venue.rating.toStringAsFixed(1),
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
+                        child: venue.rating > 0
+                            ? Row(
+                                children: [
+                                  const Icon(Icons.star, size: 16),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    venue.rating.toStringAsFixed(1),
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                ],
+                              )
+                            : const Text(
+                                'New venue',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
                       ),
                     ],
                   ),

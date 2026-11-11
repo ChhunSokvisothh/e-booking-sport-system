@@ -62,6 +62,8 @@ class AuthController {
     required String password,
     required String venueName,
     required String contactPhone,
+    required String paymentProvider,
+    required String paymentChannel,
   }) async {
     final result = await _ref
         .read(apiClientProvider)
@@ -70,6 +72,9 @@ class AuthController {
           'password': password,
           'venue_name': venueName,
           'contact_phone': contactPhone,
+          'payment_provider': paymentProvider,
+          'payment_channel': paymentChannel,
+          'amount': 20.00,
         });
     await _saveSessionFromAuthResponse(result);
   }

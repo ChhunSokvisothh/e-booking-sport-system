@@ -107,19 +107,39 @@ def _ensure_rolling_slot_window():
                 )
                 cursor = next_cursor
 
-        if not templates:
-            # Fallback timetable when no seed data exists for a facility.
+        if not templates and not facility.opening_hours and facility.owner_user_id is None:
+            # Preserve the legacy timetable for unowned seed venues only.
             for hour in [8, 10, 12, 14, 16, 18, 20]:
                 start_time = datetime.strptime(f'{hour:02d}:00', '%H:%M').time()
                 end_time = datetime.strptime(f'{hour + 2:02d}:00', '%H:%M').time()
-                templates.append(
-                    {
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration': timedelta(hours=2),
-                        'max_bookings': 3,
-                    }
-                )
+                templates.append({
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': timedelta(hours=2),
+                    'max_bookings': 3,
+                })
+
+        if facility.owner_user_id is not None and facility.opening_hours:
+            # Owner-managed venues always use their declared hours as the source of truth.
+            templates = []
+            try:
+                opening_start_raw, opening_end_raw = facility.opening_hours.split('-', 1)
+                opening_start = datetime.strptime(opening_start_raw.strip(), '%H:%M').time()
+                opening_end = datetime.strptime(opening_end_raw.strip(), '%H:%M').time()
+                cursor = datetime.combine(window_start.date(), opening_start)
+                closing = datetime.combine(window_start.date(), opening_end)
+                while cursor + timedelta(hours=1) <= closing:
+                    next_cursor = cursor + timedelta(hours=1)
+                    templates.append({
+                        'start_time': cursor.time(),
+                        'end_time': next_cursor.time(),
+                        'duration': timedelta(hours=1),
+                        'max_bookings': 1,
+                    })
+                    cursor = next_cursor
+            except (ValueError, TypeError):
+                # Invalid hours must not create misleading bookable slots.
+                templates = []
 
         template_map[facility.id] = templates
 
@@ -191,18 +211,26 @@ def _ensure_rolling_slot_window():
         if not templates:
             continue
 
-        existing_dates = {
-            slot.start_at.astimezone(timezone.get_current_timezone()).date()
-            for slot in TimeSlot.objects.filter(facility=facility, start_at__gte=window_start, start_at__lt=window_end)
+        existing_slot_keys = {
+            (
+                slot.start_at.astimezone(local_tz).date(),
+                slot.start_at.astimezone(local_tz).time().replace(tzinfo=None),
+                slot.end_at.astimezone(local_tz).time().replace(tzinfo=None),
+            )
+            for slot in TimeSlot.objects.filter(
+                facility=facility,
+                start_at__gte=window_start,
+                start_at__lt=window_end,
+            )
         }
 
         created_slots = []
         for day_offset in range(BOOKING_WINDOW_DAYS + 1):
             target_date = (window_start + timedelta(days=day_offset)).date()
-            if target_date in existing_dates:
-                continue
-
             for template in templates:
+                slot_key = (target_date, template['start_time'], template['end_time'])
+                if slot_key in existing_slot_keys:
+                    continue
                 start_dt = timezone.make_aware(datetime.combine(target_date, template['start_time']))
                 end_dt = timezone.make_aware(datetime.combine(target_date, template['end_time']))
                 if end_dt <= start_dt:

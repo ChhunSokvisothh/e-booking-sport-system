@@ -539,7 +539,7 @@ class _AuthCard extends StatelessWidget {
               Text(
                 isSignUp
                     ? isOwnerRegistration
-                        ? 'Pay the simulated $20 registration fee to activate your owner account immediately.'
+                        ? 'Pay the simulated \$20 registration fee to activate your owner account immediately.'
                         : 'Use your email to join and start booking.'
                     : 'Login to access your account homepage.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(

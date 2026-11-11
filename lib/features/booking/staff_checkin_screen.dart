@@ -197,11 +197,10 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
             borderRadius: BorderRadius.circular(18),
             child: MobileScanner(
               onDetect: (capture) {
-                final value = capture.barcodes
+                final values = capture.barcodes
                     .map((barcode) => barcode.rawValue)
-                    .whereType<String>()
-                    .firstOrNull;
-                if (value != null) _confirmScan(value);
+                    .whereType<String>();
+                if (values.isNotEmpty) _confirmScan(values.first);
               },
             ),
           ),

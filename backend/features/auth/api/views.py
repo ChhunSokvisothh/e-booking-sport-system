@@ -60,30 +60,53 @@ def auth_signup(request):
     return Response(_auth_payload(user, token), status=status.HTTP_201_CREATED)
 
 
+OWNER_REGISTRATION_FEE = 20.00
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def owner_signup(request):
+    """Create an owner account only after the simulated registration payment succeeds."""
     email = (request.data.get('email') or '').strip().lower()
     password = (request.data.get('password') or '').strip()
     venue_name = (request.data.get('venue_name') or '').strip()
     phone = (request.data.get('contact_phone') or '').strip()
+    payment_provider = (request.data.get('payment_provider') or '').strip()
+    payment_channel = (request.data.get('payment_channel') or '').strip().lower()
+    try:
+        paid_amount = float(request.data.get('amount'))
+    except (TypeError, ValueError):
+        paid_amount = None
+
     if not email or not password or not venue_name:
         return Response({'error': 'email, password, and venue_name are required'}, status=status.HTTP_400_BAD_REQUEST)
     if len(password) < 8:
         return Response({'error': 'password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
-    user = User.objects.create_user(username=email, email=email, password=password)
+    if not payment_provider or payment_channel not in {'local_bank', 'card', 'international_bank'}:
+        return Response({'error': 'Choose a payment method to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+    if paid_amount is None or round(paid_amount, 2) != OWNER_REGISTRATION_FEE:
+        return Response({'error': 'Owner registration payment amount is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # This is deliberately a simulated payment for the prototype. A real gateway
+    # must replace this client-triggered confirmation before production.
+    user = User.objects.create_user(username=email, email=email, password=password, is_staff=True)
     OwnerApplication.objects.create(
         user=user,
         venue_name=venue_name,
         contact_phone=phone,
-        status=OwnerApplication.Status.PENDING,
+        status=OwnerApplication.Status.APPROVED,
+        reviewed_at=timezone.now(),
     )
     token, _ = Token.objects.get_or_create(user=user)
     return Response({
         **_auth_payload(user, token),
-        'message': 'Owner application submitted. Your account will be enabled after admin approval.',
+        'message': 'Simulated owner registration payment successful.',
+        'payment_status': 'mock_paid',
+        'payment_provider': payment_provider,
+        'payment_channel': payment_channel,
+        'amount': f'{OWNER_REGISTRATION_FEE:.2f}',
+        'currency': 'USD',
     }, status=status.HTTP_201_CREATED)
 
 
@@ -133,6 +156,14 @@ def auth_me(request):
             'role': 'admin' if request.user.is_superuser else ('owner' if request.user.is_staff else 'user'),
             'owner_status': owner_status,
             'is_superuser': bool(request.user.is_superuser),
+            'venue_name': (
+                OwnerApplication.objects.filter(user_id=request.user.id)
+                .values_list('venue_name', flat=True).first()
+            ),
+            'contact_phone': (
+                OwnerApplication.objects.filter(user_id=request.user.id)
+                .values_list('contact_phone', flat=True).first()
+            ),
         }
     )
 

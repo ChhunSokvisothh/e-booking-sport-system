@@ -114,7 +114,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
             paymentProvider: ownerPayment!['provider']!,
-            paymentChannel: ownerPayment['channel']!,
+            paymentChannel: ownerPayment!['channel']!,
           );
         } else {
           await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());

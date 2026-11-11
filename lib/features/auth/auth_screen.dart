@@ -51,41 +51,53 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       {'provider': 'Mastercard', 'channel': 'card'},
       {'provider': 'PayPal', 'channel': 'international_bank'},
     ];
+    var selectedMethod = methods.first;
     return showDialog<Map<String, String>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Activate your venue owner account'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Registration fee'),
-            const SizedBox(height: 4),
-            const Text(
-              '\$20.00 USD',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Choose a payment method. This is a simulated payment for the prototype; no real money will be charged.',
-            ),
-            const SizedBox(height: 12),
-            ...methods.map(
-              (method) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.account_balance_wallet_outlined),
-                title: Text(method['provider']!),
-                onTap: () => Navigator.of(dialogContext).pop(method),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Activate your venue owner account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Registration fee'),
+              const SizedBox(height: 4),
+              const Text(
+                '\$20.00 USD',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                'Choose a payment method. This is a simulated payment for the prototype; no real money will be charged.',
+              ),
+              const SizedBox(height: 12),
+              ...methods.map((method) {
+                final selected = selectedMethod['provider'] == method['provider'];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                    color: selected ? Theme.of(context).colorScheme.primary : null,
+                  ),
+                  title: Text(method['provider']!),
+                  onTap: () => setDialogState(() => selectedMethod = method),
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(selectedMethod),
+              icon: const Icon(Icons.lock_outline),
+              label: const Text('Pay \$20.00'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-        ],
       ),
     );
   }

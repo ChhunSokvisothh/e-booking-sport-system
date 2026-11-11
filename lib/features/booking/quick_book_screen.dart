@@ -150,6 +150,29 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
     };
   }
 
+  Future<void> _cancelUnpaidBookings(
+    ApiClient api,
+    String token,
+    List<int> bookingIds,
+  ) async {
+    // A pending booking is only a temporary slot hold. Leaving checkout
+    // without paying must release every hold immediately.
+    for (final id in bookingIds) {
+      try {
+        await api.postJson('/api/bookings/$id/cancel/', {}, token: token);
+      } catch (_) {
+        // Best-effort cleanup. The backend payment-window expiry remains a
+        // safety net if the client loses its connection while leaving checkout.
+      }
+    }
+    ref.invalidate(bookingHistoryProvider);
+    ref.invalidate(dashboardSummaryProvider);
+    ref.invalidate(liveSlotAvailabilityProvider);
+    ref.invalidate(
+      liveSlotAvailabilityWithDiagnosticsProvider(serializeQuery(_buildQuery())),
+    );
+  }
+
   Future<int> _createPendingBooking(
     ApiClient api,
     String token,
@@ -325,7 +348,19 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
           ),
         );
       }
+
+      // Any exit from checkout other than a confirmed payment releases the
+      // temporary pending bookings immediately (including the AppBar back).
+      if (paymentResult != true && paymentResult != 'refresh_slots') {
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
+      }
     } catch (_) {
+      // If checkout navigation or booking creation fails after one or more
+      // holds were created, do not leave those unpaid bookings behind.
+      if (bookingIds.isNotEmpty) {
+        final api = ref.read(apiClientProvider);
+        await _cancelUnpaidBookings(api, session.token, bookingIds);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

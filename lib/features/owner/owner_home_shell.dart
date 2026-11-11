@@ -119,19 +119,20 @@ class _OwnerHomeShellState extends ConsumerState<OwnerHomeShell> {
       body: AppPageFrame(
         child: IndexedStack(index: _index, children: pages),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: (value) => setState(() => _index = value),
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
             icon: Icon(Icons.space_dashboard_outlined),
             label: 'Overview',
           ),
-          NavigationDestination(
+          BottomNavigationBarItem(
             icon: Icon(Icons.history_outlined),
             label: 'History',
           ),
-          NavigationDestination(
+          BottomNavigationBarItem(
             icon: Icon(Icons.stadium_outlined),
             label: 'Venues',
           ),

@@ -1,7 +1,8 @@
-from datetime import timezone as dt_timezone
+from datetime import timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import models, transaction
+from django.core import signing
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status, viewsets
@@ -66,6 +67,50 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(start_at__lt=timezone.now())
 
         return qs.order_by('-created_at')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def owner_checkin_endpoint(request):
+    if not _is_owner_user(request.user):
+        return Response({'error': 'Venue owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    token = str(request.data.get('token') or '').strip()
+    if not token:
+        return Response({'error': 'A booking QR token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        payload = signing.loads(token, salt='booking-checkin')
+        booking_id = int(payload.get('booking_id'))
+    except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError, AttributeError):
+        return Response({'error': 'This QR code is invalid or has been altered.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().select_related('facility').get(id=booking_id)
+            if not request.user.is_superuser and booking.facility.owner_user_id != _uuid_from_user(request.user):
+                return Response({'error': 'This booking belongs to another venue.'}, status=status.HTTP_403_FORBIDDEN)
+            if booking.status != BookingStatus.CONFIRMED or booking.payment_status != PaymentStatus.MOCK_PAID:
+                return Response({'error': 'Only paid, confirmed bookings can be checked in.'}, status=status.HTTP_409_CONFLICT)
+            if booking.checked_in_at is not None:
+                return Response({
+                    'error': 'This booking has already been checked in.',
+                    'checked_in_at': booking.checked_in_at,
+                }, status=status.HTTP_409_CONFLICT)
+            now = timezone.now()
+            if now < booking.start_at - timedelta(hours=2) or now > booking.end_at:
+                return Response({'error': 'Check-in is available from 2 hours before the booking until its end time.'}, status=status.HTTP_409_CONFLICT)
+            booking.checked_in_at = now
+            booking.checked_in_by = request.user
+            booking.save(update_fields=['checked_in_at', 'checked_in_by', 'updated_at'])
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'type': 'booking_checked_in',
+        'booking_id': booking.id,
+        'facility_name': booking.facility.name,
+        'checked_in_at': booking.checked_in_at,
+    })
 
 
 @api_view(['POST'])

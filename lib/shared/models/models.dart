@@ -150,6 +150,8 @@ class BookingItem {
     required this.chatbotSessionId,
     required this.couponCode,
     required this.couponDiscount,
+    required this.checkinToken,
+    required this.checkedInAt,
   });
 
   final int id;
@@ -163,6 +165,8 @@ class BookingItem {
   final String chatbotSessionId;
   final String couponCode;
   final double couponDiscount;
+  final String checkinToken;
+  final DateTime? checkedInAt;
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
     if (value is num) {
@@ -188,6 +192,10 @@ class BookingItem {
       chatbotSessionId: (json['chatbot_session_id'] as String?) ?? '',
       couponCode: (json['coupon_code'] as String?) ?? '',
       couponDiscount: _toDouble(json['coupon_discount']),
+      checkinToken: (json['checkin_token'] as String?) ?? '',
+      checkedInAt: json['checked_in_at'] == null
+          ? null
+          : DateTime.parse(json['checked_in_at'] as String).toLocal(),
     );
   }
 }

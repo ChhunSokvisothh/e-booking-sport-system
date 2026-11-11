@@ -181,14 +181,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           foregroundColor: Colors.white,
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _onDestinationSelected,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.favorite_border_rounded), label: 'Saved'),
-          NavigationDestination(icon: Icon(Icons.bookmark_outline), label: 'Bookings'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: _onDestinationSelected,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.favorite_border_rounded), label: 'Saved'),
+          BottomNavigationBarItem(icon: Icon(Icons.bookmark_outline), label: 'Bookings'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     );

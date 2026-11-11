@@ -43,9 +43,82 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     super.dispose();
   }
 
+  Future<String?> _showOwnerPaymentDialog() async {
+    String provider = 'ABA Pay';
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Owner registration payment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'A simulated first-month owner subscription is required before the owner account is created.',
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                r'USD $20.00 / month',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 10),
+              const Text('Choose a payment method'),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'ABA Pay',
+                groupValue: provider,
+                title: const Text('ABA Pay / KHQR'),
+                onChanged: (value) => setDialogState(() => provider = value!),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'ACLEDA',
+                groupValue: provider,
+                title: const Text('ACLEDA'),
+                onChanged: (value) => setDialogState(() => provider = value!),
+              ),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Demo checkout only. No real money will be charged.',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(provider),
+              icon: const Icon(Icons.lock_outline),
+              label: const Text('Simulate payment'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
+    }
+
+    String? ownerPaymentProvider;
+    if (_isSignUp && _isOwnerRegistration) {
+      ownerPaymentProvider = await _showOwnerPaymentDialog();
+      if (ownerPaymentProvider == null) {
+        return;
+      }
     }
 
     setState(() => _loading = true);
@@ -59,6 +132,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             password: _passwordCtrl.text.trim(),
             venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
+            paymentChannel: 'mobile_banking',
+            paymentProvider: ownerPaymentProvider!,
           );
         } else {
           await auth.signUp(email: _emailCtrl.text.trim(), password: _passwordCtrl.text.trim());

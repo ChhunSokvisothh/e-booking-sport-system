@@ -56,21 +56,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _activeSport = 'all';
   String _searchText = '';
 
-  String _buildDisplayName(AuthSession? session) {
-    final email = session?.email.trim() ?? '';
-    if (email.isEmpty) return 'Sports Lover';
-
-    final username = email.split('@').first;
-    final words = username
-        .replaceAll(RegExp(r'[._-]+'), ' ')
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .map((word) => word[0].toUpperCase() + word.substring(1))
-        .toList();
-
-    return words.isEmpty ? 'Sports Lover' : words.join(' ');
-  }
-
   String _timeGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) {
@@ -102,13 +87,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final liveSlotsAsync = ref.watch(liveSlotAvailabilityProvider(allLiveSlotsQuery));
     final activeCouponsAsync = ref.watch(activeCouponsProvider);
     final favoriteIds = ref.watch(favoriteFacilityIdsProvider);
-    final session = ref.watch(authSessionProvider);
     final profileAsync = ref.watch(dashboardProfileProvider);
     final profile = profileAsync.value;
     final savedDisplayName = (profile?['display_name'] as String?)?.trim() ?? '';
-    final displayName = savedDisplayName.isNotEmpty
-        ? savedDisplayName
-        : _buildDisplayName(session);
+    // Avoid displaying the email-derived username as a profile name.
+    // Use a neutral label until the saved profile display name is available.
     final avatarUrl = (profile?['avatar_url'] as String?)?.trim();
 
     final coupons = activeCouponsAsync.value ?? const <CouponItem>[];
@@ -153,7 +136,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      displayName,
+                      savedDisplayName.isNotEmpty ? savedDisplayName : 'Sports Lover',
                       style: TextStyle(
                         fontSize: tablet ? 40 : (compact ? 30 : 36),
                         fontWeight: FontWeight.w900,

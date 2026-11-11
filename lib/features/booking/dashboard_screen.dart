@@ -537,7 +537,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
       final range = map[facility.id.toString()];
       final openHours = range == null
-          ? '08:00-22:00'
+          ? (facility.openingHours.isNotEmpty ? facility.openingHours : 'Hours not set')
           : '${DateFormat('HH:mm').format(range.openAt)}-${DateFormat('HH:mm').format(range.closeAt)}';
       final rating = facility.rating.clamp(0.0, 5.0);
 
@@ -787,14 +787,18 @@ class _VenueCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       _PillBadge(
                         child: Row(
-                          children: [
-                            const Icon(Icons.star, size: 16),
-                            const SizedBox(width: 5),
-                            Text(
-                              venue.rating.toStringAsFixed(1),
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ],
+                          children: venue.rating > 0
+                              ? [
+                                  const Icon(Icons.star, size: 16),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    venue.rating.toStringAsFixed(1),
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                ]
+                              : const [
+                                  Text('Not rated', style: TextStyle(fontWeight: FontWeight.w700)),
+                                ],
                         ),
                       ),
                     ],

@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -1147,13 +1149,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     }
     if (!mounted) return;
 
-    final registeredVenueName =
-        (ownerProfile['venue_name'] as String? ?? '').trim();
-    final useRegisteredVenueName =
-        (_ownerRows?.isEmpty ?? true) && registeredVenueName.isNotEmpty;
-    final nameCtrl = TextEditingController(
-      text: useRegisteredVenueName ? registeredVenueName : '',
-    );
+    final nameCtrl = TextEditingController();
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descriptionCtrl = TextEditingController();
@@ -1161,6 +1157,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: (ownerProfile['contact_phone'] as String?) ?? '',
     );
     final openingHoursCtrl = TextEditingController();
+    List<XFile> selectedVenueImages = [];
     LatLng selectedLocation = const LatLng(11.5564, 104.9282);
     bool locationPicked = false;
     bool isIndoor = false;
@@ -1177,27 +1174,13 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (useRegisteredVenueName)
-                      InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Registered Venue Name',
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            registeredVenueName,
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
-                        ),
-                      )
-                    else
-                      TextField(
-                        controller: nameCtrl,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Venue Name',
-                        ),
+                    TextField(
+                      controller: nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Venue Name',
                       ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: locationCtrl,
@@ -1250,10 +1233,52 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: descriptionCtrl,
+                      maxLines: 3,
+                      minLines: 1,
                       decoration: const InputDecoration(
                         labelText: 'Description (optional)',
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await ImagePicker().pickMultiImage(
+                          imageQuality: 75,
+                          maxWidth: 1200,
+                        );
+                        if (picked.isNotEmpty) {
+                          setDialogState(() {
+                            selectedVenueImages = picked.take(6).toList();
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text('Add venue photos (${selectedVenueImages.length}/6)'),
+                    ),
+                    if (selectedVenueImages.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: selectedVenueImages
+                              .map((photo) => Chip(
+                                    avatar: const Icon(Icons.image_outlined, size: 16),
+                                    label: SizedBox(
+                                      width: 130,
+                                      child: Text(
+                                        photo.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    onDeleted: () => setDialogState(
+                                      () => selectedVenueImages.remove(photo),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: () async {
@@ -1321,17 +1346,47 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     setState(() => _savingNewVenue = true);
     try {
       final api = ref.read(apiClientProvider);
+      final uploadedImageUrls = <String>[];
+      for (final photo in selectedVenueImages) {
+        final bytes = await photo.readAsBytes();
+        if (bytes.length > 1800 * 1024) {
+          throw Exception('${photo.name} is larger than 1.8 MB. Choose a smaller image.');
+        }
+        final extension = photo.name.split('.').last.toLowerCase();
+        final contentType = photo.mimeType ??
+            (extension == 'png'
+                ? 'image/png'
+                : extension == 'webp'
+                    ? 'image/webp'
+                    : 'image/jpeg');
+        final upload = await api.postJson(
+          '/api/facilities/owner/upload-image/',
+          {
+            'file_name': photo.name,
+            'content_type': contentType,
+            'image_base64': base64Encode(bytes),
+          },
+          token: session.token,
+        );
+        final url = (upload['url'] as String? ?? '').trim();
+        if (url.isEmpty) {
+          throw Exception('The server did not return an image URL for ${photo.name}.');
+        }
+        uploadedImageUrls.add(url);
+      }
       final response = await api.postJson('/api/facilities/owner/', {
-        'name': nameCtrl.text,
-        'location_name': locationCtrl.text,
+        'name': nameCtrl.text.trim(),
+        'location_name': locationCtrl.text.trim(),
         'sport_type': sportType,
         'base_price_per_hour': priceCtrl.text,
-        'description': descriptionCtrl.text,
-        'contact_phone': phoneCtrl.text,
-        'opening_hours': openingHoursCtrl.text,
+        'description': descriptionCtrl.text.trim(),
+        'contact_phone': phoneCtrl.text.trim(),
+        'opening_hours': openingHoursCtrl.text.trim(),
         'latitude': selectedLocation.latitude,
         'longitude': selectedLocation.longitude,
         'is_indoor': isIndoor,
+        'image_url': uploadedImageUrls.isEmpty ? '' : uploadedImageUrls.first,
+        'gallery_image_urls': uploadedImageUrls,
       }, token: session.token);
       final createdFacility = _facilityFromResponse(response);
       if (createdFacility != null) {
@@ -1797,6 +1852,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     Expanded(
                       child: Text(
                         'Create a new venue and set its price. You can update pricing anytime.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.grey.shade700,
                           fontWeight: FontWeight.w600,
@@ -1911,12 +1968,16 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             ),
             title: Text(
               item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             subtitle: Text(
               isArchived
                   ? '${item.locationName} • ${item.sportType.toUpperCase()} • ARCHIVED'
                   : '${item.locationName} • ${item.sportType.toUpperCase()}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,

@@ -19,7 +19,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
-  final _venueNameCtrl = TextEditingController();
   final _contactPhoneCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isSignUp = false;
@@ -38,7 +37,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
-    _venueNameCtrl.dispose();
     _contactPhoneCtrl.dispose();
     super.dispose();
   }
@@ -123,7 +121,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           await auth.ownerSignUp(
             email: _emailCtrl.text.trim(),
             password: _passwordCtrl.text.trim(),
-            venueName: _venueNameCtrl.text.trim(),
             contactPhone: _contactPhoneCtrl.text.trim(),
             paymentProvider: ownerPayment!['provider']!,
             paymentChannel: ownerPayment['channel']!,
@@ -281,7 +278,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     emailCtrl: _emailCtrl,
                                     passwordCtrl: _passwordCtrl,
                                     confirmCtrl: _confirmCtrl,
-                                    venueNameCtrl: _venueNameCtrl,
                                     contactPhoneCtrl: _contactPhoneCtrl,
                                     onTelegramLogin: _telegramLogin,
                                     onPasswordChanged: () => setState(() {}),
@@ -323,7 +319,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   emailCtrl: _emailCtrl,
                                   passwordCtrl: _passwordCtrl,
                                   confirmCtrl: _confirmCtrl,
-                                  venueNameCtrl: _venueNameCtrl,
                                   contactPhoneCtrl: _contactPhoneCtrl,
                                   onTelegramLogin: _telegramLogin,
                                   onPasswordChanged: () => setState(() {}),
@@ -454,7 +449,6 @@ class _AuthCard extends StatelessWidget {
     required this.emailCtrl,
     required this.passwordCtrl,
     required this.confirmCtrl,
-    required this.venueNameCtrl,
     required this.contactPhoneCtrl,
     required this.onTelegramLogin,
     required this.onPasswordChanged,
@@ -476,7 +470,6 @@ class _AuthCard extends StatelessWidget {
   final TextEditingController emailCtrl;
   final TextEditingController passwordCtrl;
   final TextEditingController confirmCtrl;
-  final TextEditingController venueNameCtrl;
   final TextEditingController contactPhoneCtrl;
   final VoidCallback onTelegramLogin;
   final VoidCallback onPasswordChanged;
@@ -569,21 +562,6 @@ class _AuthCard extends StatelessWidget {
                 validator: Validators.password,
               ),
               if (isSignUp && isOwnerRegistration) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: venueNameCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Venue name',
-                    prefixIcon: Icon(Icons.storefront_outlined),
-                  ),
-                  validator: (value) {
-                    if ((value ?? '').trim().isEmpty) {
-                      return 'Venue name is required';
-                    }
-                    return null;
-                  },
-                ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: contactPhoneCtrl,

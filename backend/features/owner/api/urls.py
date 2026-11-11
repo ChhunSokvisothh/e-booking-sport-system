@@ -7,6 +7,7 @@ from features.owner.api.views import (
     owner_coupons_endpoint,
     owner_facilities_endpoint,
     owner_facility_detail_endpoint,
+    owner_venue_image_upload,
 )
 
 urlpatterns = [
@@ -19,6 +20,7 @@ urlpatterns = [
         name='owner-coupon-detail-endpoint',
     ),
     path('api/facilities/owner/', owner_facilities_endpoint, name='owner-facilities-endpoint'),
+    path('api/facilities/owner/upload-image/', owner_venue_image_upload, name='owner-venue-image-upload'),
     path(
         'api/facilities/owner/<int:facility_id>/',
         owner_facility_detail_endpoint,

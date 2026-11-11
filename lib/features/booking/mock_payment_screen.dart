@@ -172,13 +172,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
     );
   }
 
-  void _applyCoupon(CouponItem coupon) {
-    setState(() {
-      _appliedCoupon = coupon;
-      _couponCodeCtrl.text = coupon.code;
-    });
-  }
-
   void _handleCouponTextChanged(String value) {
     final applied = _appliedCoupon;
     if (applied != null && value.trim().toUpperCase() != applied.code) {
@@ -551,14 +544,14 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                               const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed: _applyingCoupon ? null : _applyCouponCode,
-                                  icon: _applyingCoupon
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.sell_outlined),
-                                  label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
+                                icon: _applyingCoupon
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.sell_outlined),
+                                label: Text(_applyingCoupon ? 'Checking...' : 'Apply Code'),
                               ),
                             ],
                           ),
@@ -569,21 +562,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                             color: Color(0xFF64748B),
                             fontWeight: FontWeight.w600,
                           ),
-                        ),
-                          error: (error, stack) => const Text('Unable to load coupons right now.'),
-                          data: (coupons) {
-                            if (coupons.isEmpty) {
-                              return const Text(
-                                'No active coupons right now.',
-                                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                              );
-                            }
-
-                            return const Text(
-                              'Enter a valid coupon code manually to apply discount.',
-                              style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                            );
-                          },
                         ),
                         if (_appliedCoupon != null) ...[
                           const SizedBox(height: 8),

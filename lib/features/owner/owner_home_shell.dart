@@ -1537,7 +1537,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             'sport_type': sportType,
             'base_price_per_hour': priceCtrl.text,
             'description': descriptionCtrl.text,
-            'opening_hours': hoursCtrl.text.trim(),
+            if (hoursCtrl.text.trim().isNotEmpty) 'opening_hours': hoursCtrl.text.trim(),
             'latitude': selectedLocation.latitude,
             'longitude': selectedLocation.longitude,
             'is_indoor': isIndoor,

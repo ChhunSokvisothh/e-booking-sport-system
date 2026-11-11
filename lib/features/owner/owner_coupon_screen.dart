@@ -171,7 +171,7 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
       if (!mounted) {
         return;
       }
-      final message = e.toString().replaceFirst(RegExp(r'^Exception:\\s*'), '').trim();
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message.isEmpty ? 'Unable to save coupon right now.' : message)),
       );

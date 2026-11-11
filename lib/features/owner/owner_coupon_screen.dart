@@ -151,8 +151,10 @@ class _OwnerCouponScreenState extends ConsumerState<OwnerCouponScreen> {
           'title': _titleCtrl.text.trim(),
           'description': _descriptionCtrl.text.trim(),
           'discount_percent': discount,
-          'starts_at': _startsAt.toIso8601String(),
-          'ends_at': _endsAt.toIso8601String(),
+          // Django stores UTC timestamps. DateTimePicker values are local;
+          // send explicit UTC offsets so coupons activate at the time the owner selected.
+          'starts_at': _startsAt.toUtc().toIso8601String(),
+          'ends_at': _endsAt.toUtc().toIso8601String(),
         },
         token: session.token,
       );

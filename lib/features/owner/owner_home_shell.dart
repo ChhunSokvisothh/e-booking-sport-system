@@ -1130,7 +1130,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     final session = ref.read(authSessionProvider);
     if (session == null) return;
 
-    final isFirstVenue = _ownerRows?.isEmpty ?? true;
+    _ownerRows ??= List<Facility>.from(
+      ref.read(ownerFacilitiesProvider).asData?.value ?? const <Facility>[],
+    );
+    final isFirstVenue = _ownerRows!.isEmpty;
     final registeredVenueName = (session.ownerVenueName ?? '').trim();
     final nameCtrl = TextEditingController(
       text: isFirstVenue ? registeredVenueName : '',
@@ -1384,8 +1387,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: facility.basePricePerHour.toStringAsFixed(2),
     );
     final descriptionCtrl = TextEditingController(text: facility.description);
+    final hoursCtrl = TextEditingController(text: facility.openingHours);
     LatLng selectedLocation = LatLng(facility.latitude, facility.longitude);
-    final imageUrlCtrl = TextEditingController(text: facility.imageUrl ?? '');
     bool isIndoor = facility.isIndoor;
     String sportType = _sportTypes.contains(facility.sportType)
         ? facility.sportType
@@ -1445,9 +1448,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                   ),
                   const SizedBox(height: 8),
                   TextField(
-                    controller: imageUrlCtrl,
+                    controller: hoursCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Image URL (optional)',
+                      labelText: 'Daily opening hours',
+                      hintText: '08:00 - 22:00',
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1506,7 +1510,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             'sport_type': sportType,
             'base_price_per_hour': priceCtrl.text,
             'description': descriptionCtrl.text,
-            'image_url': imageUrlCtrl.text,
+            'opening_hours': hoursCtrl.text.trim(),
             'latitude': selectedLocation.latitude,
             'longitude': selectedLocation.longitude,
             'is_indoor': isIndoor,

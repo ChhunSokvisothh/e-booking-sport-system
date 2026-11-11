@@ -297,10 +297,6 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             serializeQuery(_buildQuery()),
           ),
         );
-        await Future.wait([
-          ref.read(bookingHistoryProvider.future),
-          ref.read(dashboardSummaryProvider.future),
-        ]);
         if (!mounted) {
           return;
         }
@@ -316,10 +312,6 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
             serializeQuery(_buildQuery()),
           ),
         );
-        await Future.wait([
-          ref.read(bookingHistoryProvider.future),
-          ref.read(dashboardSummaryProvider.future),
-        ]);
       }
     } catch (_) {
       if (mounted) {

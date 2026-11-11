@@ -23,6 +23,7 @@ from global_utils.view_helpers import (
     _sync_to_supabase_async,
     _target_option_chunks,
     _uuid_from_user,
+    _is_owner_user,
 )
 
 class BookingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -32,7 +33,7 @@ class BookingViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
+        if not _is_owner_user(self.request.user):
             user_uuid = _uuid_from_user(self.request.user)
             _release_expired_pending_bookings(user_uuid=user_uuid)
             qs = qs.filter(user_id=user_uuid)

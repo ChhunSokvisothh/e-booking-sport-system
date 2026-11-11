@@ -9,6 +9,7 @@ import '../auth/data/auth_session.dart';
 import '../../shared/models/models.dart';
 import '../facility/facility_providers.dart';
 import 'booking_providers.dart';
+import 'payment_method_selector.dart';
 
 class MockPaymentScreen extends ConsumerStatefulWidget {
   const MockPaymentScreen({
@@ -53,13 +54,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
   Timer? _countdownTimer;
   late DateTime _expiresAt;
   Duration _remaining = _paymentWindow;
-  final List<_PaymentMethod> _methods = const [
-    _PaymentMethod(channel: 'local_bank', provider: 'Bakong QR', icon: Icons.qr_code_2),
-    _PaymentMethod(channel: 'local_bank', provider: 'ABA Bank', icon: Icons.account_balance),
-    _PaymentMethod(channel: 'card', provider: 'Visa', icon: Icons.credit_card),
-    _PaymentMethod(channel: 'card', provider: 'Mastercard', icon: Icons.credit_card),
-    _PaymentMethod(channel: 'international_bank', provider: 'PayPal', icon: Icons.public),
-  ];
+  final List<PaymentMethodOption> _methods = standardPaymentMethods;
   int _selectedMethod = 0;
   final TextEditingController _couponCodeCtrl = TextEditingController();
   CouponItem? _appliedCoupon;
@@ -630,61 +625,13 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: const Color(0xFFE5E7EB)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Payment Method',
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: tiny ? 15.5 : 17),
-                        ),
-                        SizedBox(height: tiny ? 8 : 10),
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _methods.length,
-                          separatorBuilder: (_, _) => SizedBox(height: tiny ? 6 : 8),
-                          itemBuilder: (context, index) {
-                            final method = _methods[index];
-                            final selected = _selectedMethod == index;
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => setState(() => _selectedMethod = index),
-                              child: Ink(
-                                padding: EdgeInsets.symmetric(horizontal: tiny ? 8 : 10, vertical: tiny ? 8 : 10),
-                                decoration: BoxDecoration(
-                                  gradient: selected
-                                      ? const LinearGradient(colors: [Color(0xFFDBEAFE), Color(0xFFE0F2FE)])
-                                      : const LinearGradient(colors: [Colors.white, Colors.white]),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: selected ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(method.icon, color: const Color(0xFF334155), size: tiny ? 18 : 22),
-                                    SizedBox(width: tiny ? 8 : 10),
-                                    Expanded(
-                                      child: Text(
-                                        method.provider,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: tiny ? 13 : 15),
-                                      ),
-                                    ),
-                                    Icon(
-                                      selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                                      color: selected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
-                                      size: tiny ? 20 : 28,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                    child: PaymentMethodSelector(
+                      methods: _methods,
+                      selectedIndex: _selectedMethod,
+                      compact: tiny,
+                      onSelected: (index) => setState(() => _selectedMethod = index),
                     ),
+
                   ),
                   const SizedBox(height: 14),
                   SizedBox(
@@ -934,95 +881,6 @@ class _ReceiptMetaCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PaymentMethod {
-  const _PaymentMethod({required this.channel, required this.provider, required this.icon});
-
-  final String channel;
-  final String provider;
-  final IconData icon;
-}
-
-class _PaymentSuccessDialog extends StatefulWidget {
-  const _PaymentSuccessDialog({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  State<_PaymentSuccessDialog> createState() => _PaymentSuccessDialogState();
-}
-
-class _PaymentSuccessDialogState extends State<_PaymentSuccessDialog> {
-  @override
-  void initState() {
-    super.initState();
-    Future<void>.delayed(const Duration(milliseconds: 1400), () {
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pop();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: 280,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.8, end: 1),
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutBack,
-                builder: (context, value, child) {
-                  return Transform.scale(scale: value, child: child);
-                },
-                child: Container(
-                  width: 66,
-                  height: 66,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 38),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                widget.title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

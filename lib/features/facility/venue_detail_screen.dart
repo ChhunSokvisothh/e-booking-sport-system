@@ -461,29 +461,36 @@ class VenueDetailScreen extends ConsumerWidget {
             spacing: 18,
             runSpacing: 10,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFE6A700),
-                    size: 21,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    rating.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: _ink,
+              if (rating > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFE6A700),
+                      size: 21,
                     ),
-                  ),
-                  const SizedBox(width: 5),
-                  const Text(
-                    'rating',
-                    style: TextStyle(color: _muted),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 5),
+                    Text(
+                      rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text('rating', style: TextStyle(color: _muted)),
+                  ],
+                )
+              else
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.storefront_outlined, color: _muted, size: 20),
+                    SizedBox(width: 5),
+                    Text('No reviews yet', style: TextStyle(color: _muted)),
+                  ],
+                ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

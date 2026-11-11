@@ -1138,6 +1138,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     final locationCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descriptionCtrl = TextEditingController();
+    final hoursCtrl = TextEditingController(text: '08:00 - 22:00');
     bool isIndoor = false;
     String sportType = _sportTypes.first;
     LatLng? selectedLocation;
@@ -1197,6 +1198,15 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     maxLines: 3,
                     decoration: const InputDecoration(labelText: 'Description (optional)'),
                   ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: hoursCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Daily opening hours',
+                      hintText: '08:00 - 22:00',
+                      helperText: 'Use 24-hour time. New booking slots follow this schedule.',
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () async {
@@ -1229,9 +1239,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 if (nameCtrl.text.trim().isEmpty ||
                     locationCtrl.text.trim().isEmpty ||
                     priceCtrl.text.trim().isEmpty ||
+                    !RegExp(r'^([01]\\d|2[0-3]):[0-5]\\d\\s*-\\s*([01]\\d|2[0-3]):[0-5]\\d$').hasMatch(hoursCtrl.text.trim()) ||
                     selectedLocation == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Enter the venue details and select its map location.')),
+                    const SnackBar(content: Text('Enter all required details, valid opening hours (HH:MM - HH:MM), and select the map location.')),
                   );
                   return;
                 }
@@ -1249,6 +1260,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       locationCtrl.dispose();
       priceCtrl.dispose();
       descriptionCtrl.dispose();
+      hoursCtrl.dispose();
       return;
     }
 
@@ -1261,6 +1273,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         'sport_type': sportType,
         'base_price_per_hour': priceCtrl.text.trim(),
         'description': descriptionCtrl.text.trim(),
+        'opening_hours': hoursCtrl.text.trim(),
         'latitude': selectedLocation!.latitude,
         'longitude': selectedLocation!.longitude,
         'is_indoor': isIndoor,
@@ -1282,6 +1295,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       locationCtrl.dispose();
       priceCtrl.dispose();
       descriptionCtrl.dispose();
+      hoursCtrl.dispose();
       if (mounted) setState(() => _savingNewVenue = false);
     }
   }

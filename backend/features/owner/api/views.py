@@ -146,8 +146,8 @@ def owner_facilities_endpoint(request):
         is_indoor = bool(is_indoor_raw)
 
     base_price_raw = request.data.get('base_price_per_hour')
-    latitude_raw = request.data.get('latitude', 11.5564)
-    longitude_raw = request.data.get('longitude', 104.9282)
+    latitude_raw = request.data.get('latitude')
+    longitude_raw = request.data.get('longitude')
 
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)

@@ -15,8 +15,9 @@ def approve_owner_applications(modeladmin, request, queryset):
         application.status = OwnerApplication.Status.APPROVED
         application.reviewed_at = timezone.now()
         application.save(update_fields=['status', 'reviewed_at'])
-        application.user.is_staff = True
-        application.user.save(update_fields=['is_staff'])
+        if not application.user.is_superuser and application.user.is_staff:
+            application.user.is_staff = False
+            application.user.save(update_fields=['is_staff'])
 
 
 @admin.register(OwnerApplication)

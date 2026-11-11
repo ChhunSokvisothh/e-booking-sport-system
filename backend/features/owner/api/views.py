@@ -332,7 +332,7 @@ def owner_facility_detail_endpoint(request, facility_id):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated, IsVenueOwner])
 def owner_coupons_endpoint(request):
-    if not (request.user.is_staff or request.user.is_superuser):
+    if not _is_owner_user(request.user):
         return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':

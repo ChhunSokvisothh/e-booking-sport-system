@@ -10,14 +10,5 @@ String bookingReceiptId(BookingItem booking) {
 }
 
 String bookingCheckinPayload(BookingItem booking) {
-  return jsonEncode({
-    'receipt_id': bookingReceiptId(booking),
-    'booking_id': booking.id,
-    'facility_name': booking.facilityName,
-    'start_at': booking.startAt.toIso8601String(),
-    'end_at': booking.endAt.toIso8601String(),
-    'status': booking.status,
-    'payment_status': booking.paymentStatus,
-    'booking_source': booking.bookingSource,
-  });
+  return booking.checkinToken;
 }

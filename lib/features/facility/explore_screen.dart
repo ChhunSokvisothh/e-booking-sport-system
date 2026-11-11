@@ -155,7 +155,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               onBook: () => Navigator.of(context).push(
                                 buildSlideFadeRoute(
                                   QuickBookScreen(
-                                    onOpenDashboard: onOpenDashboard,
+                                    onOpenDashboard: widget.onOpenDashboard,
                                     initialSportType: facility.sportType,
                                     initialFacilityId: facility.id.toString(),
                                   ),
@@ -249,7 +249,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                                             onBook: () => Navigator.of(context).push(
                                               buildSlideFadeRoute(
                                                 QuickBookScreen(
-                                                  onOpenDashboard: onOpenDashboard,
+                                                  onOpenDashboard: widget.onOpenDashboard,
                                                   initialSportType: facility.sportType,
                                                   initialFacilityId: facility.id.toString(),
                                                 ),

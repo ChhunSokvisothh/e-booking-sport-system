@@ -1777,6 +1777,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     Expanded(
                       child: Text(
                         'Create a new venue and set its price. You can update pricing anytime.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.grey.shade700,
                           fontWeight: FontWeight.w600,
@@ -1891,12 +1893,16 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             ),
             title: Text(
               item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             subtitle: Text(
               isArchived
                   ? '${item.locationName} • ${item.sportType.toUpperCase()} • ARCHIVED'
                   : '${item.locationName} • ${item.sportType.toUpperCase()}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,

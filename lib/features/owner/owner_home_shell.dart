@@ -1410,13 +1410,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       text: facility.basePricePerHour.toStringAsFixed(2),
     );
     final descriptionCtrl = TextEditingController(text: facility.description);
-    final latitudeCtrl = TextEditingController(
-      text: facility.latitude.toString(),
-    );
-    final longitudeCtrl = TextEditingController(
-      text: facility.longitude.toString(),
-    );
+    final phoneCtrl = TextEditingController(text: facility.contactPhone);
+    final openingHoursCtrl = TextEditingController(text: facility.openingHours);
     final imageUrlCtrl = TextEditingController(text: facility.imageUrl ?? '');
+    LatLng selectedLocation = LatLng(facility.latitude, facility.longitude);
     bool isIndoor = facility.isIndoor;
     String sportType = _sportTypes.contains(facility.sportType)
         ? facility.sportType
@@ -1476,40 +1473,38 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                   ),
                   const SizedBox(height: 8),
                   TextField(
-                    controller: imageUrlCtrl,
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Contact phone'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: openingHoursCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Image URL (optional)',
+                      labelText: 'Opening hours (e.g. 08:00-22:00)',
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: latitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Latitude',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: longitudeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Longitude',
-                          ),
-                        ),
-                      ),
-                    ],
+                  TextField(
+                    controller: imageUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Cover image URL (optional)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await _pickVenueLocation(selectedLocation);
+                      if (picked != null) {
+                        setDialogState(() => selectedLocation = picked);
+                      }
+                    },
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Change location on map'),
+                  ),
+                  Text(
+                    '${selectedLocation.latitude.toStringAsFixed(5)}, ${selectedLocation.longitude.toStringAsFixed(5)}',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 6),
                   SwitchListTile(
@@ -1551,9 +1546,11 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
             'sport_type': sportType,
             'base_price_per_hour': priceCtrl.text,
             'description': descriptionCtrl.text,
+            'contact_phone': phoneCtrl.text,
+            'opening_hours': openingHoursCtrl.text,
             'image_url': imageUrlCtrl.text,
-            'latitude': latitudeCtrl.text,
-            'longitude': longitudeCtrl.text,
+            'latitude': selectedLocation.latitude,
+            'longitude': selectedLocation.longitude,
             'is_indoor': isIndoor,
           }, token: session.token);
       final updatedFacility = _facilityFromResponse(response);

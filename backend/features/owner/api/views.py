@@ -64,6 +64,12 @@ def active_coupons_endpoint(request):
     else:
         qs = qs.filter(owner_user_id__isnull=True)
 
+    # Checkout can validate one exact code instead of depending on a
+    # potentially stale client-side list of coupons.
+    code = (request.query_params.get('code') or '').strip().upper()
+    if code:
+        qs = qs.filter(code=code)
+
     qs = qs.order_by('-discount_percent', 'code')
     return Response(CouponSerializer(qs, many=True).data)
 

@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.db import IntegrityError, models, transaction
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -196,6 +197,7 @@ def owner_facilities_endpoint(request):
         is_active=True,
         archived_at=None,
     )
+    cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_created', 'facility': FacilitySerializer(facility).data}, status=status.HTTP_201_CREATED)
 
 
@@ -326,6 +328,8 @@ def owner_facility_detail_endpoint(request, facility_id):
     facility.owner_user_id = owner_uuid
     update_fields.append('owner_user_id')
     facility.save(update_fields=update_fields)
+    if 'opening_hours' in update_fields:
+        cache.delete('rolling-slot-window:last-run')
     return Response({'type': 'facility_updated', 'facility': FacilitySerializer(facility).data})
 
 

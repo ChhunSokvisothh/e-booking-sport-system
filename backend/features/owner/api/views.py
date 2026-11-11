@@ -1,4 +1,5 @@
 from decimal import Decimal
+import re
 
 from django.db import models
 from django.utils import timezone
@@ -133,7 +134,6 @@ def owner_facilities_endpoint(request):
     sport_type = (request.data.get('sport_type') or '').strip().lower()
     location_name = (request.data.get('location_name') or '').strip()
     description = (request.data.get('description') or '').strip()
-    image_url = (request.data.get('image_url') or '').strip()
     opening_hours = (request.data.get('opening_hours') or '').strip()
     is_indoor_raw = request.data.get('is_indoor', False)
     if isinstance(is_indoor_raw, bool):
@@ -144,8 +144,8 @@ def owner_facilities_endpoint(request):
         is_indoor = bool(is_indoor_raw)
 
     base_price_raw = request.data.get('base_price_per_hour')
-    latitude_raw = request.data.get('latitude', 11.5564)
-    longitude_raw = request.data.get('longitude', 104.9282)
+    latitude_raw = request.data.get('latitude')
+    longitude_raw = request.data.get('longitude')
 
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -153,8 +153,11 @@ def owner_facilities_endpoint(request):
         return Response({'error': 'location_name is required'}, status=status.HTTP_400_BAD_REQUEST)
     if not opening_hours:
         return Response({'error': 'opening_hours is required (HH:MM - HH:MM)'}, status=status.HTTP_400_BAD_REQUEST)
-    if not __import__('re').fullmatch(r'(?:[01]\\d|2[0-3]):[0-5]\\d\\s*-\\s*(?:[01]\\d|2[0-3]):[0-5]\\d', opening_hours):
+    if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d\s*-\s*(?:[01]\d|2[0-3]):[0-5]\d', opening_hours):
         return Response({'error': 'opening_hours must use HH:MM - HH:MM (24-hour time)'}, status=status.HTTP_400_BAD_REQUEST)
+    opening_time, closing_time = [value.strip() for value in opening_hours.split('-', 1)]
+    if closing_time <= opening_time:
+        return Response({'error': 'Closing time must be later than opening time.'}, status=status.HTTP_400_BAD_REQUEST)
     if sport_type not in SportType.values:
         return Response({'error': f'sport_type must be one of: {", ".join(SportType.values)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -166,10 +169,14 @@ def owner_facilities_endpoint(request):
         return Response({'error': 'base_price_per_hour must be greater than zero'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
+        if latitude_raw is None or longitude_raw is None:
+            raise ValueError('map coordinates are required')
         latitude = float(latitude_raw)
         longitude = float(longitude_raw)
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            raise ValueError('coordinates are outside valid ranges')
     except Exception:
-        return Response({'error': 'latitude and longitude must be numeric'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Select a valid venue location on the map.'}, status=status.HTTP_400_BAD_REQUEST)
 
     facility = Facility.objects.create(
         name=name,
@@ -180,7 +187,6 @@ def owner_facilities_endpoint(request):
         latitude=latitude,
         longitude=longitude,
         base_price_per_hour=base_price_per_hour,
-        image_url=image_url,
         opening_hours=opening_hours,
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,

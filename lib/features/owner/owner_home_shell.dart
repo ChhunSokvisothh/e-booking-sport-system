@@ -1050,8 +1050,12 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     ref.invalidate(liveSlotAvailabilityWithDiagnosticsProvider);
   }
 
-  Future<LatLng?> _pickVenueLocation(LatLng initialLocation) {
+  Future<LatLng?> _pickVenueLocation(
+    LatLng initialLocation, {
+    bool requireTap = false,
+  }) {
     LatLng selected = initialLocation;
+    bool hasSelection = !requireTap;
     return showDialog<LatLng>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1069,7 +1073,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     options: MapOptions(
                       initialCenter: initialLocation,
                       initialZoom: 14,
-                      onTap: (_, point) => setDialogState(() => selected = point),
+                      onTap: (_, point) => setDialogState(() {
+                        selected = point;
+                        hasSelection = true;
+                      }),
                     ),
                     children: [
                       TileLayer(
@@ -1077,18 +1084,20 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                         userAgentPackageName: 'com.ebookingsport.app',
                       ),
                       MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: selected,
-                            width: 44,
-                            height: 44,
-                            child: const Icon(
-                              Icons.location_pin,
-                              size: 42,
-                              color: Color(0xFFE11D48),
-                            ),
-                          ),
-                        ],
+                        markers: hasSelection
+                            ? [
+                                Marker(
+                                  point: selected,
+                                  width: 44,
+                                  height: 44,
+                                  child: const Icon(
+                                    Icons.location_pin,
+                                    size: 42,
+                                    color: Color(0xFFE11D48),
+                                  ),
+                                ),
+                              ]
+                            : const [],
                       ),
                       RichAttributionWidget(
                         attributions: [TextSourceAttribution('OpenStreetMap contributors')],
@@ -1098,7 +1107,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}',
+                  hasSelection
+                      ? 'Selected: ${selected.latitude.toStringAsFixed(6)}, ${selected.longitude.toStringAsFixed(6)}'
+                      : 'Tap the map to choose a location',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1110,7 +1121,9 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(selected),
+              onPressed: hasSelection
+                  ? () => Navigator.of(dialogContext).pop(selected)
+                  : null,
               child: const Text('Use this location'),
             ),
           ],
@@ -1227,7 +1240,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: () async {
-                        final picked = await _pickVenueLocation(selectedLocation);
+                        final picked = await _pickVenueLocation(selectedLocation, requireTap: true);
                         if (picked != null) {
                           setDialogState(() {
                             selectedLocation = picked;

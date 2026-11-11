@@ -163,11 +163,14 @@ final liveSlotAvailabilityWithDiagnosticsProvider = FutureProvider.autoDispose
       final query = deserializeQuery(queryKey);
       final stopwatch = Stopwatch()..start();
       final allResults = <dynamic>[];
+      final isDateRangeSearch =
+          query.containsKey('start_date') && query.containsKey('end_date');
       var pageNumber = 1;
       var hasNext = false;
 
-      // Venue-specific searches request a 7-day window. Follow pagination so
-      // venues with many courts do not silently lose later dates.
+      // Filtered searches request a 7-day window. Follow pagination so venues
+      // with many courts do not silently lose later dates. Keep the old
+      // one-page behavior for broad, unfiltered Quick Book searches.
       do {
         final pageQuery = <String, String>{
           ...query,
@@ -178,10 +181,11 @@ final liveSlotAvailabilityWithDiagnosticsProvider = FutureProvider.autoDispose
           query: pageQuery,
           token: session?.token,
         );
-        allResults.addAll(page['results'] as List<dynamic>);
+        final pageResults = page['results'] as List<dynamic>;
+        allResults.addAll(pageResults);
         hasNext = page['has_next'] == true;
         pageNumber++;
-      } while (hasNext);
+      } while (isDateRangeSearch && hasNext);
 
       stopwatch.stop();
       return FetchResult(

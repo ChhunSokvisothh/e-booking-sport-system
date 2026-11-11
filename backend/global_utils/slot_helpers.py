@@ -27,6 +27,7 @@ def _slot_payload(
     current_bookings,
     max_bookings,
     is_open,
+    court_number=1,
     slot_version=1,
     reservation_hold_until=None,
     booked_by_me=False,

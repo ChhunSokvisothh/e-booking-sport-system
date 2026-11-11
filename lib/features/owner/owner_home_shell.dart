@@ -1090,7 +1090,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                           ),
                         ],
                       ),
-                      const RichAttributionWidget(
+                      RichAttributionWidget(
                         attributions: [TextSourceAttribution('OpenStreetMap contributors')],
                       ),
                     ],
@@ -1147,6 +1147,7 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     );
     final openingHoursCtrl = TextEditingController();
     LatLng selectedLocation = const LatLng(11.5564, 104.9282);
+    bool locationPicked = false;
     bool isIndoor = false;
     String sportType = _sportTypes.first;
 
@@ -1228,7 +1229,10 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                       onPressed: () async {
                         final picked = await _pickVenueLocation(selectedLocation);
                         if (picked != null) {
-                          setDialogState(() => selectedLocation = picked);
+                          setDialogState(() {
+                            selectedLocation = picked;
+                            locationPicked = true;
+                          });
                         }
                       },
                       icon: const Icon(Icons.map_outlined),

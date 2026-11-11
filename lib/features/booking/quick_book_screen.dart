@@ -43,6 +43,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
   bool _indoorOnly = false;
   String? _sportType;
   String? _selectedFacilityId;
+  int _selectedCourtNumber = 1;
   final Set<String> _selectedSlotIds = <String>{};
   bool _processing = false;
   int _slotPage = 1;
@@ -411,20 +412,26 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
-            final validSlotIds = selectedFacilityRows
+            final courtNumbers = selectedFacilityRows.map((e) => e.courtNumber).toSet().toList()..sort();
+            final selectedCourtNumber = courtNumbers.contains(_selectedCourtNumber)
+                ? _selectedCourtNumber
+                : (courtNumbers.isEmpty ? 1 : courtNumbers.first);
+            final selectedCourtRows = selectedFacilityRows.where((row) => row.courtNumber == selectedCourtNumber).toList();
+
+            final validSlotIds = selectedCourtRows
                 .map((e) => e.slotId)
                 .toSet();
             final effectiveSelectedIds = _selectedSlotIds
                 .where(validSlotIds.contains)
                 .where(
-                  (id) => selectedFacilityRows.any(
+                  (id) => selectedCourtRows.any(
                     (row) => row.slotId == id && row.isAvailable,
                   ),
                 )
                 .toSet();
 
             final selectedSlots =
-                selectedFacilityRows
+                selectedCourtRows
                     .where((row) => effectiveSelectedIds.contains(row.slotId))
                     .toList()
                   ..sort((a, b) => a.startAt.compareTo(b.startAt));
@@ -518,6 +525,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                               setState(() {
                                 _sportType = sport;
                                 _selectedFacilityId = null;
+                                _selectedCourtNumber = 1;
                                 _selectedSlotIds.clear();
                               });
                             },
@@ -569,6 +577,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                           setState(() {
                             _selectedDate = DateTime(d.year, d.month, d.day);
                             _selectedFacilityId = null;
+                            _selectedCourtNumber = 1;
                             _selectedSlotIds.clear();
                           });
                         },
@@ -577,7 +586,7 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                _SectionTitle(title: resourceTitle, tiny: tiny),
+                _SectionTitle(title: 'Select Venue', tiny: tiny),
                 const SizedBox(height: 10),
                 if (facilities.isEmpty)
                   const Text('No fields/tables available for this date.')
@@ -602,11 +611,31 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         onSelected: (_) {
                           setState(() {
                             _selectedFacilityId = facilityRow.facilityId;
+                            _selectedCourtNumber = 1;
                             _selectedSlotIds.clear();
                           });
                         },
                       );
                     }).toList(),
+                  ),
+                const SizedBox(height: 16),
+                _SectionTitle(title: resourceTitle, tiny: tiny),
+                const SizedBox(height: 10),
+                if (courtNumbers.isEmpty)
+                  const Text('No fields configured for this venue.')
+                else
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: courtNumbers.map((number) => ChoiceChip(
+                      label: Text('${isBilliard ? 'Table' : 'Field'} $number'),
+                      selected: number == selectedCourtNumber,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() {
+                        _selectedCourtNumber = number;
+                        _selectedSlotIds.clear();
+                      }),
+                    )).toList(),
                   ),
                 const SizedBox(height: 18),
                 _SectionTitle(title: 'Select Time (Multi-select)', tiny: tiny),

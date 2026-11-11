@@ -25,21 +25,6 @@ from .avatar_storage import (
     delete_avatar,
 )
 
-def _ensure_owner_access(user):
-    application = OwnerApplication.objects.filter(user_id=user.id).first()
-    if application is None:
-        return
-    fields = []
-    if application.status != OwnerApplication.Status.APPROVED:
-        application.status = OwnerApplication.Status.APPROVED
-        application.reviewed_at = timezone.now()
-        fields.extend(['status', 'reviewed_at'])
-    if fields:
-        application.save(update_fields=fields)
-    if not user.is_staff:
-        user.is_staff = True
-        user.save(update_fields=['is_staff'])
-
 def _auth_payload(user, token):
     owner_status = (
         OwnerApplication.objects
@@ -52,8 +37,9 @@ def _auth_payload(user, token):
         'user_id': user.id,
         'user_uuid': str(_uuid_from_user(user)),
         'email': user.email,
-        'role': _role_for_user(user),
+        'role': 'admin' if user.is_superuser else ('owner' if user.is_staff else 'user'),
         'owner_status': owner_status,
+        'is_superuser': bool(user.is_superuser),
     }
 
 @api_view(['POST'])
@@ -88,19 +74,16 @@ def owner_signup(request):
     if User.objects.filter(username=email).exists():
         return Response({'error': 'email already registered'}, status=status.HTTP_409_CONFLICT)
     user = User.objects.create_user(username=email, email=email, password=password)
-    user.is_staff = True
-    user.save(update_fields=['is_staff'])
     OwnerApplication.objects.create(
         user=user,
         venue_name=venue_name,
         contact_phone=phone,
-        status=OwnerApplication.Status.APPROVED,
-        reviewed_at=timezone.now(),
+        status=OwnerApplication.Status.PENDING,
     )
     token, _ = Token.objects.get_or_create(user=user)
     return Response({
         **_auth_payload(user, token),
-        'message': 'Admin venue account created. You can now use the owner dashboard.',
+        'message': 'Owner application submitted. Your account will be enabled after admin approval.',
     }, status=status.HTTP_201_CREATED)
 
 
@@ -122,7 +105,6 @@ def auth_login(request):
     if user is None:
         return Response({'error': 'invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    _ensure_owner_access(user)
     token, _ = Token.objects.get_or_create(user=user)
     return Response(_auth_payload(user, token))
 
@@ -148,8 +130,9 @@ def auth_me(request):
             'user_id': request.user.id,
             'user_uuid': str(_uuid_from_user(request.user)),
             'email': request.user.email,
-            'role': _role_for_user(request.user),
+            'role': 'admin' if request.user.is_superuser else ('owner' if request.user.is_staff else 'user'),
             'owner_status': owner_status,
+            'is_superuser': bool(request.user.is_superuser),
         }
     )
 

@@ -589,34 +589,24 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                 _SectionTitle(title: 'Select Venue', tiny: tiny),
                 const SizedBox(height: 10),
                 if (facilities.isEmpty)
-                  const Text('No fields/tables available for this date.')
+                  const Text('No venues available for this date.')
                 else
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: facilities.map((facilityRow) {
-                      final selected =
-                          facilityRow.facilityId == selectedFacilityId;
-                      return ChoiceChip(
-                        label: Text(facilityRow.facilityName),
-                        selected: selected,
-                        showCheckmark: false,
-                        selectedColor: const Color(0xFF111827),
-                        labelStyle: TextStyle(
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF4B5563),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        onSelected: (_) {
-                          setState(() {
-                            _selectedFacilityId = facilityRow.facilityId;
-                            _selectedCourtNumber = 1;
-                            _selectedSlotIds.clear();
-                          });
-                        },
-                      );
-                    }).toList(),
+                  DropdownButtonFormField<String>(
+                    value: selectedFacilityId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    items: facilities.map((row) => DropdownMenuItem<String>(
+                      value: row.facilityId,
+                      child: Text(row.facilityName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (value) => setState(() {
+                      _selectedFacilityId = value;
+                      _selectedCourtNumber = 1;
+                      _selectedSlotIds.clear();
+                    }),
                   ),
                 const SizedBox(height: 16),
                 _SectionTitle(title: resourceTitle, tiny: tiny),

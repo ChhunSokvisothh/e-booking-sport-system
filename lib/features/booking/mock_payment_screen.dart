@@ -361,11 +361,6 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       ref.invalidate(bookingHistoryProvider);
       ref.invalidate(dashboardSummaryProvider);
       ref.invalidate(liveSlotAvailabilityProvider);
-      await Future.wait([
-        ref.read(bookingHistoryProvider.future),
-        ref.read(dashboardSummaryProvider.future),
-      ]);
-
       if (mounted) {
         await showGeneralDialog<void>(
           context: context,

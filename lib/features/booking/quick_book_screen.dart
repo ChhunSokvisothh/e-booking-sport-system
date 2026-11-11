@@ -583,7 +583,9 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
                         onTap: () {
                           setState(() {
                             _selectedDate = DateTime(d.year, d.month, d.day);
-                            _selectedFacilityId = null;
+                            // Keep the selected venue when changing dates. Clearing
+                            // it makes subsequent /live-slots requests return every
+                            // venue's slots instead of this venue's timetable.
                             _selectedCourtNumber = 1;
                             _selectedSlotIds.clear();
                           });

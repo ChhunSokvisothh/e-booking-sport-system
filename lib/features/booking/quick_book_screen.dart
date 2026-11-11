@@ -300,7 +300,10 @@ class _QuickBookScreenState extends ConsumerState<QuickBookScreen> {
         if (!mounted) {
           return;
         }
-        Navigator.of(context).pop();
+        // Payment is complete: clear intermediate booking screens and return
+        // to the app's home/dashboard instead of leaving the user stranded.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        widget.onOpenDashboard();
       }
 
       if (paymentResult == 'refresh_slots' && mounted) {

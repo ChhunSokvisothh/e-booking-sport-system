@@ -1,6 +1,9 @@
 from datetime import datetime
+import base64
+import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.core.cache import cache
 from django.utils import timezone
@@ -9,6 +12,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from supabase import create_client
 
 from core.models import Booking, BookingStatus, Coupon, Facility, PaymentStatus, SportType, TimeSlot
 from core.serializers import CouponSerializer, FacilitySerializer
@@ -100,6 +104,58 @@ def owner_analytics_endpoint(request):
             ).order_by('-revenue')
         ],
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsVenueOwner])
+def owner_venue_image_upload(request):
+    if not _is_owner_user(request.user):
+        return Response({'error': 'Owner access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    filename = (request.data.get('file_name') or '').strip()
+    content_type = (request.data.get('content_type') or '').strip().lower()
+    encoded = request.data.get('image_base64') or ''
+    allowed = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+    }
+    extension = allowed.get(content_type)
+    if not extension or not filename:
+        return Response({'error': 'Upload a JPG, PNG, or WebP image.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except Exception:
+        return Response({'error': 'The image upload payload is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not raw or len(raw) > 4 * 1024 * 1024:
+        return Response({'error': 'Each venue image must be smaller than 4 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return Response({'error': 'Venue image storage is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    path = f'{_uuid_from_user(request.user)}/{uuid.uuid4().hex}.{extension}'
+    try:
+        storage = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+        ).storage.from_('venue-photos')
+        storage.upload(
+            path,
+            raw,
+            file_options={'content-type': content_type, 'upsert': 'false'},
+        )
+        public_url = storage.get_public_url(path)
+        if not isinstance(public_url, str):
+            public_url = public_url.get('publicUrl') or public_url.get('public_url')
+        if not public_url:
+            raise RuntimeError('Supabase did not return a public image URL.')
+    except Exception:
+        return Response(
+            {'error': 'Could not upload the venue image. Check that the public venue-photos bucket exists.'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    return Response({'url': public_url, 'path': path}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET', 'POST'])
@@ -224,6 +280,8 @@ def owner_facilities_endpoint(request):
         rating=Decimal('0.0'),
         contact_phone=contact_phone,
         opening_hours=opening_hours,
+        image_url=(request.data.get('image_url') or '').strip(),
+        gallery_image_urls=request.data.get('gallery_image_urls') if isinstance(request.data.get('gallery_image_urls'), list) else [],
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,
         archived_at=None,

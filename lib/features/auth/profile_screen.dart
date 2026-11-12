@@ -566,7 +566,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 final compact = constraints.maxWidth < 380;
                 return GridView.count(
                   crossAxisCount: 2,
-                  childAspectRatio: compact ? 2.4 : 4.8,
+                  // A fixed tile height prevents the stat labels from overflowing
+                  // on narrow browser windows and larger text scales.
+                  mainAxisExtent: compact ? 80 : 76,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                   physics: const NeverScrollableScrollPhysics(),
@@ -836,7 +838,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),

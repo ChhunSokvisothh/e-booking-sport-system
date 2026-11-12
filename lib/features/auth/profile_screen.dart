@@ -566,7 +566,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 final compact = constraints.maxWidth < 380;
                 return GridView.count(
                   crossAxisCount: 2,
-                  childAspectRatio: compact ? 1.9 : 2.5,
+                  childAspectRatio: compact ? 2.4 : 4.8,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                   physics: const NeverScrollableScrollPhysics(),

@@ -7,7 +7,9 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 
 class ApiClient {
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({http.Client? client, this.onUnauthorized}) : _client = client ?? http.Client();
+
+  final Future<void> Function()? onUnauthorized;
 
   final http.Client _client;
   static const Duration _requestTimeout = Duration(seconds: 60);
@@ -64,6 +66,10 @@ class ApiClient {
     }
 
     if (response.statusCode == 401) {
+      // Expired tokens must not leave the app trapped in an authenticated state.
+      if (onUnauthorized != null) {
+        unawaited(onUnauthorized!());
+      }
       throw Exception('Your session has expired. Please sign in again.');
     }
     if (response.statusCode == 403) {

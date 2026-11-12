@@ -424,7 +424,7 @@ class _MockPaymentScreenState extends ConsumerState<MockPaymentScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 14, compact ? 12 : 16, 18),
+            padding: EdgeInsets.fromLTRB(compact ? 16 : 24, 12, compact ? 16 : 24, 16),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight - 18),
               child: Column(
@@ -770,11 +770,11 @@ class _ReceiptCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             child: Image.network(
               'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=1200&q=70',
-              height: 88,
+              height: 64,
               width: double.infinity,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => Container(
-                height: 88,
+                height: 64,
                 color: const Color(0xFFE5E7EB),
                 alignment: Alignment.center,
                 child: const Icon(Icons.receipt_long),
@@ -806,7 +806,10 @@ class _ReceiptCard extends StatelessWidget {
               final cols = constraints.maxWidth < 430 ? 1 : 2;
               return GridView.count(
                 crossAxisCount: cols,
-                childAspectRatio: cols == 1 ? 4.8 : 3.0,
+                // Wide desktop cells were becoming unnecessarily tall.
+                // Keep metadata compact while retaining a readable single-column
+                // layout on narrow phones.
+                childAspectRatio: cols == 1 ? 5.2 : 8.0,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
                 physics: const NeverScrollableScrollPhysics(),

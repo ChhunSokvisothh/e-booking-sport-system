@@ -76,13 +76,21 @@ def owner_checkin_endpoint(request):
         return Response({'error': 'Venue owner access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     token = str(request.data.get('token') or '').strip()
-    if not token:
-        return Response({'error': 'A booking QR token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        payload = signing.loads(token, salt='booking-checkin')
-        booking_id = int(payload.get('booking_id'))
-    except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError, AttributeError):
-        return Response({'error': 'This QR code is invalid or has been altered.'}, status=status.HTTP_400_BAD_REQUEST)
+    raw_booking_id = request.data.get('booking_id')
+    if token:
+        try:
+            payload = signing.loads(token, salt='booking-checkin')
+            booking_id = int(payload.get('booking_id'))
+        except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError, AttributeError):
+            return Response({'error': 'This QR code is invalid or has been altered.'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # Manual check-in is an owner-authorized action for cases where the
+        # customer cannot present a QR. The same payment, ownership, timing,
+        # and duplicate-scan checks below still apply.
+        try:
+            booking_id = int(raw_booking_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'Provide a valid booking QR token or booking_id.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():

@@ -31,6 +31,57 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
     super.dispose();
   }
 
+  Future<void> _confirmManualCheckin(int bookingId) async {
+    if (_submitting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Check in booking #$bookingId?'),
+        content: const Text(
+          'Confirm that the customer has arrived. This action can only be completed once.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm check-in'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _submitting = true;
+      _message = null;
+    });
+    try {
+      final session = ref.read(authSessionProvider);
+      if (session == null) throw Exception('Please sign in again.');
+      final result = await ref.read(apiClientProvider).postJson(
+        '/api/bookings/check-in/',
+        {'booking_id': bookingId},
+        token: session.token,
+      );
+      ref.invalidate(bookingHistoryProvider);
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = false;
+        _message = 'Booking #${result['booking_id']} checked in manually.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = true;
+        _message = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _confirmScan(String token) async {
     if (_submitting || token.isEmpty || token == _lastScanned) return;
     setState(() {
@@ -168,7 +219,11 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
                           title: Text(b.facilityName, style: const TextStyle(fontWeight: FontWeight.w800)),
                           subtitle: Text('${bookingReceiptId(b)} • ${DateFormat('EEE, dd MMM HH:mm').format(b.startAt)}'),
                           trailing: b.checkedInAt == null
-                              ? const Icon(Icons.verified_user_outlined, color: Color(0xFF64748B))
+                              ? IconButton(
+                                  tooltip: 'Manually check in',
+                                  onPressed: _submitting ? null : () => _confirmManualCheckin(b.id),
+                                  icon: const Icon(Icons.how_to_reg_rounded, color: Color(0xFF0F766E)),
+                                )
                               : const Icon(Icons.check_circle, color: Color(0xFF059669)),
                         ),
                       )),
@@ -184,7 +239,7 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           child: Row(
             children: [
               const Expanded(child: Text('Point the camera at the customer’s booking QR.', style: TextStyle(fontWeight: FontWeight.w700))),
@@ -193,15 +248,18 @@ class _StaffCheckinScreenState extends ConsumerState<StaffCheckinScreen> {
           ),
         ),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: MobileScanner(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: MobileScanner(
               onDetect: (capture) {
                 final values = capture.barcodes
                     .map((barcode) => barcode.rawValue)
                     .whereType<String>();
                 if (values.isNotEmpty) _confirmScan(values.first);
               },
+              ),
             ),
           ),
         ),

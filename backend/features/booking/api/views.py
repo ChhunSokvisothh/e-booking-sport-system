@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
+from core.models import Booking, BookingSource, BookingStatus, Coupon, CouponRedemption, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
 from features.booking.api.telegram_invoices import (
     deliver_paid_bookings_invoice_async,
@@ -30,6 +30,20 @@ from global_utils.view_helpers import (
     _uuid_from_user,
     _is_owner_user,
 )
+
+WELCOME25_MAX_USES_PER_USER = 5
+
+
+def _welcome25_usage_error(user_uuid):
+    """Return an error when this account has already used WELCOME25 five times."""
+    used = CouponRedemption.objects.filter(
+        user_id=user_uuid,
+        coupon_code__iexact='WELCOME25',
+    ).count()
+    if used >= WELCOME25_MAX_USES_PER_USER:
+        return 'WELCOME25 has already been used 5 times on this account.'
+    return None
+
 
 class BookingViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BookingSerializer
@@ -419,6 +433,10 @@ def mock_payment_endpoint(request):
             ).first()
             if coupon is None:
                 return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+            if coupon.code == 'WELCOME25':
+                usage_error = _welcome25_usage_error(user_uuid)
+                if usage_error:
+                    return Response({'error': usage_error}, status=status.HTTP_400_BAD_REQUEST)
             if coupon.owner_user_id and coupon.owner_user_id != slot.facility.owner_user_id:
                 return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
             discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
@@ -492,6 +510,9 @@ def mock_payment_endpoint(request):
             if slot_for_sync is not None:
                 _sync_to_supabase_async(slot=slot_for_sync, booking=booking)
 
+        if coupon is not None and coupon.code == 'WELCOME25':
+            CouponRedemption.objects.create(user_id=user_uuid, coupon_code=coupon.code)
+
         deliver_paid_bookings_invoice_async([booking.id for booking in created_bookings])
 
         return Response(
@@ -555,6 +576,10 @@ def mock_payment_endpoint(request):
         ).first()
         if coupon is None:
             return Response({'error': 'Invalid or expired coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+        if coupon.code == 'WELCOME25':
+            usage_error = _welcome25_usage_error(user_uuid)
+            if usage_error:
+                return Response({'error': usage_error}, status=status.HTTP_400_BAD_REQUEST)
         if coupon.owner_user_id and any(booking.facility.owner_user_id != coupon.owner_user_id for booking in bookings):
             return Response({'error': 'This coupon is only valid at the venue that issued it.'}, status=status.HTTP_400_BAD_REQUEST)
         discount_ratio = (Decimal(coupon.discount_percent) / Decimal('100')).quantize(Decimal('0.0001'))
@@ -592,6 +617,9 @@ def mock_payment_endpoint(request):
 
     for slot, booking in zip(slots_to_sync, bookings_to_sync):
         _sync_to_supabase_async(slot=slot, booking=booking)
+
+    if coupon is not None and coupon.code == 'WELCOME25':
+        CouponRedemption.objects.create(user_id=user_uuid, coupon_code=coupon.code)
 
     deliver_paid_bookings_invoice_async([booking.id for booking in bookings_to_sync])
 

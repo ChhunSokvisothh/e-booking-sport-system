@@ -938,16 +938,21 @@ class _BookingHistoryCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.asset(
-                  imageAsset,
-                  width: imageSize,
-                  height: imageSize,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stack) {
-                    return Image.network(imageUrl, width: imageSize, height: imageSize, fit: BoxFit.cover);
-                  },
+              Container(
+                width: imageSize,
+                height: imageSize,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0F766E), Color(0xFF164E63)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.sports_rounded,
+                  color: Colors.white,
+                  size: 36,
                 ),
               ),
               const SizedBox(width: 14),

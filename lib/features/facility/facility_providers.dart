@@ -34,7 +34,13 @@ Map<String, String> deserializeQuery(String queryKey) {
   return Uri.splitQueryString(queryKey);
 }
 
-final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(
+  onUnauthorized: () async {
+    if (ref.read(authSessionProvider) == null) return;
+    ref.read(authSessionProvider.notifier).state = null;
+    await clearStoredAuthSession();
+  },
+));
 
 final facilityListProvider = FutureProvider<List<Facility>>((ref) async {
   final client = ref.watch(apiClientProvider);

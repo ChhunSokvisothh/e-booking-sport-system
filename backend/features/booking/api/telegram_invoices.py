@@ -103,16 +103,28 @@ def _build_combined_invoice_pdf(bookings, receipt_id, invoice_url):
         Paragraph(f'<b>Venue directions:</b> <link href="{safe(directions)}" color="blue">Open directions in Google Maps</link>', styles['BodyText']),
         Spacer(1, 14),
     ]
+    # The invoice URL and the venue check-in token serve different purposes.
+    # Never encode the public invoice URL as the venue check-in QR.
+    story.extend([
+        Paragraph('<b>Venue check-in QR codes</b>', styles['Heading3']),
+        Paragraph('Show the QR for the relevant booking to venue staff. Each QR can be used once.', styles['BodyText']),
+        Spacer(1, 6),
+    ])
+    for booking in bookings:
+        checkin_token = signing.dumps({'booking_id': booking.id}, salt='booking-checkin')
+        story.extend([
+            Paragraph(f'<b>Booking #{booking.id} — Check-in</b>', styles['BodyText']),
+            Spacer(1, 4),
+            _QRFlowable(checkin_token, size=112),
+            Spacer(1, 10),
+        ])
     if invoice_url:
         story.extend([
-            Paragraph('<b>Scan to view this booking invoice</b>', styles['Heading3']),
-            Paragraph('The QR link is signed and expires after 30 days.', styles['BodyText']),
-            Spacer(1, 6),
-            _QRFlowable(invoice_url, size=112),
             Paragraph(f'<link href="{safe(invoice_url)}" color="blue">Open secure online invoice</link>', styles['BodyText']),
+            Paragraph('The online invoice link is read-only and expires after 30 days.', styles['Italic']),
         ])
     else:
-        story.append(Paragraph('Online invoice QR unavailable: configure PUBLIC_INVOICE_BASE_URL.', styles['Italic']))
+        story.append(Paragraph('Online invoice link unavailable: configure PUBLIC_INVOICE_BASE_URL.', styles['Italic']))
     doc.build(story)
     output.seek(0)
     return output

@@ -31,7 +31,7 @@ from global_utils.view_helpers import (
     _is_owner_user,
 )
 
-WELCOME25_MAX_USES_PER_USER = 5
+WELCOME25_MAX_USES_PER_USER = 1
 
 
 def _welcome25_usage_error(user_uuid):

@@ -343,6 +343,17 @@ class Coupon(models.Model):
         return f'{self.code} ({self.discount_percent}% )'
 
 
+class CouponRedemption(models.Model):
+    """One coupon use per successful checkout, regardless of slot count."""
+    user_id = models.UUIDField(db_index=True)
+    coupon_code = models.CharField(max_length=40, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user_id', 'coupon_code', 'created_at'])]
+
+
 class FavoriteFacility(models.Model):
     """A user's saved venue. Favorites are tied to the authenticated account."""
 

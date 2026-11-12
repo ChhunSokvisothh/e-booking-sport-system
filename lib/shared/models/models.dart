@@ -146,6 +146,7 @@ class BookingItem {
     required this.startAt,
     required this.endAt,
     required this.facilityName,
+    required this.facilityImageUrl,
     required this.bookingSource,
     required this.chatbotSessionId,
     required this.couponCode,
@@ -161,6 +162,7 @@ class BookingItem {
   final DateTime startAt;
   final DateTime endAt;
   final String facilityName;
+  final String? facilityImageUrl;
   final String bookingSource;
   final String chatbotSessionId;
   final String couponCode;
@@ -188,6 +190,17 @@ class BookingItem {
       startAt: DateTime.parse(json['start_at'] as String).toLocal(),
       endAt: DateTime.parse(json['end_at'] as String).toLocal(),
       facilityName: (facility['name'] as String?) ?? 'Unknown',
+      facilityImageUrl: (() {
+        final primary = (facility['image_url'] as String?)?.trim();
+        if (primary != null && primary.isNotEmpty) return primary;
+        final gallery = facility['gallery_image_urls'];
+        if (gallery is List) {
+          for (final item in gallery) {
+            if (item is String && item.trim().isNotEmpty) return item.trim();
+          }
+        }
+        return null;
+      })(),
       bookingSource: (json['booking_source'] as String?) ?? 'manual',
       chatbotSessionId: (json['chatbot_session_id'] as String?) ?? '',
       couponCode: (json['coupon_code'] as String?) ?? '',

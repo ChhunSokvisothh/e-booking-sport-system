@@ -367,12 +367,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF0F766E), Color(0xFF0EA5E9)],
+              colors: [Color(0xFF0F172A), Color(0xFF164E63)],
             ),
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0EA5E9).withValues(alpha: 0.28),
+                color: const Color(0xFF0F172A).withValues(alpha: 0.16),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -380,18 +380,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           child: Column(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: _AssetOrNetworkImage(
-                  assetPath: 'assets/images/sports/profile_banner.jpg',
-                  fallbackImageUrl:
-                      'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=1200&q=80',
-                  height: 120,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   CircleAvatar(
@@ -440,7 +429,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 width: double.infinity,
                 child: _GradientActionButton(
                   icon: Icons.photo_camera_outlined,
-                  label: _avatarUploading ? 'Uploading...' : 'Upload Photo',
+                  label: _avatarUploading ? 'Uploading...' : 'Add profile photo',
                   colors: const [Color(0xFF14B8A6), Color(0xFF0EA5E9)],
                   onTap: _avatarUploading ? () {} : _pickProfilePhoto,
                 ),
@@ -577,16 +566,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 final compact = constraints.maxWidth < 380;
                 return GridView.count(
                   crossAxisCount: 2,
-                  childAspectRatio: compact ? 1.9 : 2.5,
+                  // A fixed tile height prevents the stat labels from overflowing
+                  // on narrow browser windows and larger text scales.
+                  mainAxisExtent: compact ? 80 : 76,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                   physics: const NeverScrollableScrollPhysics(),
                   shrinkWrap: true,
                   children: [
-                    _StatCard(label: 'Confirmed', value: '$confirmed', color: Colors.green),
-                    _StatCard(label: 'Pending', value: '$pending', color: Colors.orange),
-                    _StatCard(label: 'Spent', value: '\$${spent.toStringAsFixed(0)}', color: cs.primary),
-                    _StatCard(label: 'Saved (Month)', value: '\$${monthlySavings.toStringAsFixed(0)}', color: const Color(0xFF0F766E)),
+                    _StatCard(label: 'Confirmed bookings', value: '$confirmed', color: Colors.green),
+                    _StatCard(label: 'Pending bookings', value: '$pending', color: Colors.orange),
+                    _StatCard(label: 'Total spent', value: '\$${spent.toStringAsFixed(0)}', color: cs.primary),
+                    _StatCard(label: 'Saved this month', value: '\$${monthlySavings.toStringAsFixed(0)}', color: const Color(0xFF0F766E)),
                   ],
                 );
               },
@@ -626,7 +617,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Account Health', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const Text('Profile completion', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -647,7 +638,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 Text(
                   completion >= 0.95
                       ? 'Profile is complete and ready for fast checkout.'
-                      : 'Complete your details to improve booking recommendations and assistant responses.',
+                      : 'Add your name, city and favorite sport to complete your profile.',
                   style: TextStyle(color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
@@ -847,7 +838,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),

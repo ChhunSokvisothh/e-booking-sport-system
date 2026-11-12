@@ -559,8 +559,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         width: (cardContentWidth - 14) / 2,
                         child: _BookingHistoryCard(
                           booking: booking,
-                          imageAsset: visual.assetPath,
-                          imageUrl: visual.fallbackImageUrl,
+                          sportIcon: visual.icon,
+                          imageUrl: booking.facilityImageUrl ?? _facilityImageUrl(facility),
                           location: facility?.locationName ?? 'Sports Complex',
                           compact: compact,
                           largeText: largeText,
@@ -584,8 +584,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _BookingHistoryCard(
                         booking: booking,
-                        imageAsset: visual.assetPath,
-                        imageUrl: visual.fallbackImageUrl,
+                        sportIcon: visual.icon,
+                        imageUrl: booking.facilityImageUrl ?? _facilityImageUrl(facility),
                         location: facility?.locationName ?? 'Sports Complex',
                         compact: compact,
                         largeText: largeText,
@@ -623,6 +623,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       ),
       loading: () => const _BookingsSkeleton(),
     );
+  }
+
+  String? _facilityImageUrl(Facility? facility) {
+    if (facility == null) return null;
+    final primary = facility.imageUrl?.trim() ?? '';
+    if (primary.isNotEmpty) return primary;
+    for (final image in facility.galleryImageUrls) {
+      final url = image.trim();
+      if (url.isNotEmpty) return url;
+    }
+    return null;
   }
 
   String _displayName(String email) {
@@ -875,7 +886,7 @@ class _TabsBar extends StatelessWidget {
 class _BookingHistoryCard extends StatelessWidget {
   const _BookingHistoryCard({
     required this.booking,
-    required this.imageAsset,
+    required this.sportIcon,
     required this.imageUrl,
     required this.location,
     required this.compact,
@@ -887,8 +898,8 @@ class _BookingHistoryCard extends StatelessWidget {
   });
 
   final BookingItem booking;
-  final String imageAsset;
-  final String imageUrl;
+  final IconData sportIcon;
+  final String? imageUrl;
   final String location;
   final bool compact;
   final bool largeText;
@@ -938,17 +949,33 @@ class _BookingHistoryCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.asset(
-                  imageAsset,
-                  width: imageSize,
-                  height: imageSize,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stack) {
-                    return Image.network(imageUrl, width: imageSize, height: imageSize, fit: BoxFit.cover);
-                  },
+              Container(
+                width: imageSize,
+                height: imageSize,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0F766E), Color(0xFF164E63)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
+                clipBehavior: Clip.antiAlias,
+                child: imageUrl != null && imageUrl!.isNotEmpty
+                    ? Image.network(
+                        imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          sportIcon,
+                          color: Colors.white,
+                          size: 36,
+                        ),
+                      )
+                    : Icon(
+                        sportIcon,
+                        color: Colors.white,
+                        size: 36,
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(

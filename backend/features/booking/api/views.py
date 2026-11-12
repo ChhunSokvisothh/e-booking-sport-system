@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import Booking, BookingSource, BookingStatus, Coupon, PaymentStatus, TimeSlot
+from core.models import Booking, BookingSource, BookingStatus, Coupon, CouponRedemption, PaymentStatus, TimeSlot
 from core.serializers import BookingSerializer
 from features.booking.api.telegram_invoices import (
     deliver_paid_bookings_invoice_async,
@@ -36,11 +36,9 @@ WELCOME25_MAX_USES_PER_USER = 5
 
 def _welcome25_usage_error(user_uuid):
     """Return an error when this account has already used WELCOME25 five times."""
-    used = Booking.objects.filter(
+    used = CouponRedemption.objects.filter(
         user_id=user_uuid,
         coupon_code__iexact='WELCOME25',
-        payment_status=PaymentStatus.MOCK_PAID,
-        status=BookingStatus.CONFIRMED,
     ).count()
     if used >= WELCOME25_MAX_USES_PER_USER:
         return 'WELCOME25 has already been used 5 times on this account.'
@@ -512,6 +510,9 @@ def mock_payment_endpoint(request):
             if slot_for_sync is not None:
                 _sync_to_supabase_async(slot=slot_for_sync, booking=booking)
 
+        if coupon is not None and coupon.code == 'WELCOME25':
+            CouponRedemption.objects.create(user_id=user_uuid, coupon_code=coupon.code)
+
         deliver_paid_bookings_invoice_async([booking.id for booking in created_bookings])
 
         return Response(
@@ -616,6 +617,9 @@ def mock_payment_endpoint(request):
 
     for slot, booking in zip(slots_to_sync, bookings_to_sync):
         _sync_to_supabase_async(slot=slot, booking=booking)
+
+    if coupon is not None and coupon.code == 'WELCOME25':
+        CouponRedemption.objects.create(user_id=user_uuid, coupon_code=coupon.code)
 
     deliver_paid_bookings_invoice_async([booking.id for booking in bookings_to_sync])
 

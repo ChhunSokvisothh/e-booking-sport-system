@@ -559,8 +559,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         width: (cardContentWidth - 14) / 2,
                         child: _BookingHistoryCard(
                           booking: booking,
-                          imageAsset: visual.assetPath,
-                          imageUrl: visual.fallbackImageUrl,
+                          sportIcon: visual.icon,
                           location: facility?.locationName ?? 'Sports Complex',
                           compact: compact,
                           largeText: largeText,
@@ -584,8 +583,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _BookingHistoryCard(
                         booking: booking,
-                        imageAsset: visual.assetPath,
-                        imageUrl: visual.fallbackImageUrl,
+                        sportIcon: visual.icon,
                         location: facility?.locationName ?? 'Sports Complex',
                         compact: compact,
                         largeText: largeText,
@@ -875,8 +873,7 @@ class _TabsBar extends StatelessWidget {
 class _BookingHistoryCard extends StatelessWidget {
   const _BookingHistoryCard({
     required this.booking,
-    required this.imageAsset,
-    required this.imageUrl,
+    required this.sportIcon,
     required this.location,
     required this.compact,
     required this.largeText,
@@ -887,8 +884,7 @@ class _BookingHistoryCard extends StatelessWidget {
   });
 
   final BookingItem booking;
-  final String imageAsset;
-  final String imageUrl;
+  final IconData sportIcon;
   final String location;
   final bool compact;
   final bool largeText;
@@ -950,7 +946,7 @@ class _BookingHistoryCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(
-                  Icons.sports_rounded,
+                  sportIcon,
                   color: Colors.white,
                   size: 36,
                 ),

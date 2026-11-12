@@ -1,4 +1,4 @@
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import migrations
@@ -14,7 +14,7 @@ def seed_welcome25(apps, schema_editor):
             'title': 'Welcome discount',
             'description': 'Get 25% off your booking. Available to every account for up to five paid bookings.',
             'discount_percent': Decimal('25.00'),
-            'starts_at': now - timezone.timedelta(days=1),
+            'starts_at': now - timedelta(days=1),
             'ends_at': datetime(2099, 12, 31, 23, 59, 59, tzinfo=dt_timezone.utc),
             'is_active': True,
             'archived_at': None,

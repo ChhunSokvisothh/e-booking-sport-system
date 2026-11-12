@@ -1636,7 +1636,35 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                       ),
                     ),
                   if (newGalleryPhotos.isNotEmpty)
-                    Wrap(spacing: 6, children: newGalleryPhotos.map((photo) => Chip(label: Text(photo.name, overflow: TextOverflow.ellipsis), onDeleted: () => setDialogState(() => newGalleryPhotos.remove(photo)))).toList()),
+                    SizedBox(
+                      height: 112,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: newGalleryPhotos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final photo = newGalleryPhotos[index];
+                          return SizedBox(
+                            width: 112,
+                            child: Column(children: [
+                              Expanded(child: FutureBuilder<Uint8List>(
+                                future: photo.readAsBytes(),
+                                builder: (context, snapshot) => ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: snapshot.hasData
+                                      ? Image.memory(snapshot.data!, width: 112, fit: BoxFit.cover)
+                                      : const ColoredBox(color: Color(0xFFE5E7EB), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                                ),
+                              )),
+                              Row(children: [
+                                Expanded(child: Text(photo.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10))),
+                                IconButton(visualDensity: VisualDensity.compact, onPressed: () => setDialogState(() => newGalleryPhotos.remove(photo)), icon: const Icon(Icons.close, size: 16)),
+                              ]),
+                            ]),
+                          );
+                        },
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   TextField(controller: websiteCtrl, decoration: const InputDecoration(labelText: 'Website (optional)')),
                   const SizedBox(height: 8),

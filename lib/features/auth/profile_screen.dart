@@ -566,7 +566,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 final compact = constraints.maxWidth < 380;
                 return GridView.count(
                   crossAxisCount: 2,
-                  childAspectRatio: compact ? 1.9 : 2.5,
+                  childAspectRatio: compact ? 2.4 : 4.8,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                   physics: const NeverScrollableScrollPhysics(),
@@ -574,8 +574,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     _StatCard(label: 'Confirmed bookings', value: '$confirmed', color: Colors.green),
                     _StatCard(label: 'Pending bookings', value: '$pending', color: Colors.orange),
-                    _StatCard(label: 'Total spent', value: '\${spent.toStringAsFixed(0)}', color: cs.primary),
-                    _StatCard(label: 'Saved this month', value: '\${monthlySavings.toStringAsFixed(0)}', color: const Color(0xFF0F766E)),
+                    _StatCard(label: 'Total spent', value: '\$${spent.toStringAsFixed(0)}', color: cs.primary),
+                    _StatCard(label: 'Saved this month', value: '\$${monthlySavings.toStringAsFixed(0)}', color: const Color(0xFF0F766E)),
                   ],
                 );
               },

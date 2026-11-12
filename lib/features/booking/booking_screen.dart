@@ -560,6 +560,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         child: _BookingHistoryCard(
                           booking: booking,
                           sportIcon: visual.icon,
+                          imageUrl: _facilityImageUrl(facility),
                           location: facility?.locationName ?? 'Sports Complex',
                           compact: compact,
                           largeText: largeText,
@@ -584,6 +585,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       child: _BookingHistoryCard(
                         booking: booking,
                         sportIcon: visual.icon,
+                        imageUrl: _facilityImageUrl(facility),
                         location: facility?.locationName ?? 'Sports Complex',
                         compact: compact,
                         largeText: largeText,
@@ -621,6 +623,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       ),
       loading: () => const _BookingsSkeleton(),
     );
+  }
+
+  String? _facilityImageUrl(Facility? facility) {
+    if (facility == null) return null;
+    final primary = facility.imageUrl?.trim() ?? '';
+    if (primary.isNotEmpty) return primary;
+    for (final image in facility.galleryImageUrls) {
+      final url = image.trim();
+      if (url.isNotEmpty) return url;
+    }
+    return null;
   }
 
   String _displayName(String email) {
@@ -874,6 +887,7 @@ class _BookingHistoryCard extends StatelessWidget {
   const _BookingHistoryCard({
     required this.booking,
     required this.sportIcon,
+    required this.imageUrl,
     required this.location,
     required this.compact,
     required this.largeText,
@@ -885,6 +899,7 @@ class _BookingHistoryCard extends StatelessWidget {
 
   final BookingItem booking;
   final IconData sportIcon;
+  final String? imageUrl;
   final String location;
   final bool compact;
   final bool largeText;
@@ -945,11 +960,22 @@ class _BookingHistoryCard extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
-                  sportIcon,
-                  color: Colors.white,
-                  size: 36,
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: imageUrl != null && imageUrl!.isNotEmpty
+                    ? Image.network(
+                        imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          sportIcon,
+                          color: Colors.white,
+                          size: 36,
+                        ),
+                      )
+                    : Icon(
+                        sportIcon,
+                        color: Colors.white,
+                        size: 36,
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(

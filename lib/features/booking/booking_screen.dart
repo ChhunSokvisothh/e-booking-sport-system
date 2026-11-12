@@ -560,7 +560,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         child: _BookingHistoryCard(
                           booking: booking,
                           sportIcon: visual.icon,
-                          imageUrl: _facilityImageUrl(facility),
+                          imageUrl: booking.facilityImageUrl ?? _facilityImageUrl(facility),
                           location: facility?.locationName ?? 'Sports Complex',
                           compact: compact,
                           largeText: largeText,
@@ -585,7 +585,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       child: _BookingHistoryCard(
                         booking: booking,
                         sportIcon: visual.icon,
-                        imageUrl: _facilityImageUrl(facility),
+                        imageUrl: booking.facilityImageUrl ?? _facilityImageUrl(facility),
                         location: facility?.locationName ?? 'Sports Complex',
                         compact: compact,
                         largeText: largeText,

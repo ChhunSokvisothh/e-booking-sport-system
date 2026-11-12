@@ -367,12 +367,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF0F766E), Color(0xFF0EA5E9)],
+              colors: [Color(0xFF0F172A), Color(0xFF164E63)],
             ),
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0EA5E9).withValues(alpha: 0.28),
+                color: const Color(0xFF0F172A).withValues(alpha: 0.16),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -380,18 +380,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           child: Column(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: _AssetOrNetworkImage(
-                  assetPath: 'assets/images/sports/profile_banner.jpg',
-                  fallbackImageUrl:
-                      'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=1200&q=80',
-                  height: 120,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   CircleAvatar(

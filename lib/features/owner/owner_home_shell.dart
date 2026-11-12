@@ -1515,7 +1515,15 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
     final descriptionCtrl = TextEditingController(text: facility.description);
     final phoneCtrl = TextEditingController(text: facility.contactPhone);
     final openingHoursCtrl = TextEditingController(text: facility.openingHours);
-    final imageUrlCtrl = TextEditingController(text: facility.imageUrl ?? '');
+    final websiteCtrl = TextEditingController(text: facility.websiteUrl);
+    final surfaceCtrl = TextEditingController(text: facility.surfaceType);
+    final amenitiesCtrl = TextEditingController(text: facility.amenities.join(', '));
+    final policyCtrl = TextEditingController(text: facility.cancellationPolicy);
+    final galleryUrls = List<String>.from(facility.galleryImageUrls);
+    if (galleryUrls.isEmpty && (facility.imageUrl ?? '').trim().isNotEmpty) {
+      galleryUrls.add(facility.imageUrl!.trim());
+    }
+    final newGalleryPhotos = <XFile>[];
     LatLng selectedLocation = LatLng(facility.latitude, facility.longitude);
     bool isIndoor = facility.isIndoor;
     String sportType = _sportTypes.contains(facility.sportType)
@@ -1588,12 +1596,55 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: imageUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Cover image URL (optional)',
-                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Venue photos (${galleryUrls.length + newGalleryPhotos.length}/6)', style: const TextStyle(fontWeight: FontWeight.w800)),
                   ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: galleryUrls.length + newGalleryPhotos.length >= 6 ? null : () async {
+                      final remaining = 6 - galleryUrls.length - newGalleryPhotos.length;
+                      final picked = await ImagePicker().pickMultiImage(imageQuality: 75, maxWidth: 1200);
+                      if (picked.isNotEmpty) {
+                        setDialogState(() => newGalleryPhotos.addAll(picked.take(remaining)));
+                      }
+                    },
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text('Choose photos from device'),
+                  ),
+                  if (galleryUrls.isNotEmpty)
+                    SizedBox(
+                      height: 118,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: galleryUrls.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) => SizedBox(
+                          width: 112,
+                          child: Column(children: [
+                            Expanded(child: Stack(fit: StackFit.expand, children: [
+                              ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(galleryUrls[index], fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFE5E7EB), child: Icon(Icons.broken_image_outlined)))),
+                              if (index == 0) const Positioned(left: 4, top: 4, child: Chip(label: Text('Cover', style: TextStyle(fontSize: 10)), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero)),
+                            ])),
+                            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              IconButton(visualDensity: VisualDensity.compact, onPressed: index == 0 ? null : () => setDialogState(() { final item = galleryUrls.removeAt(index); galleryUrls.insert(index - 1, item); }), icon: const Icon(Icons.arrow_back, size: 16)),
+                              IconButton(visualDensity: VisualDensity.compact, onPressed: index == galleryUrls.length - 1 ? null : () => setDialogState(() { final item = galleryUrls.removeAt(index); galleryUrls.insert(index + 1, item); }), icon: const Icon(Icons.arrow_forward, size: 16)),
+                              IconButton(visualDensity: VisualDensity.compact, onPressed: () => setDialogState(() => galleryUrls.removeAt(index)), icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red)),
+                            ]),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  if (newGalleryPhotos.isNotEmpty)
+                    Wrap(spacing: 6, children: newGalleryPhotos.map((photo) => Chip(label: Text(photo.name, overflow: TextOverflow.ellipsis), onDeleted: () => setDialogState(() => newGalleryPhotos.remove(photo)))).toList()),
+                  const SizedBox(height: 8),
+                  TextField(controller: websiteCtrl, decoration: const InputDecoration(labelText: 'Website (optional)')),
+                  const SizedBox(height: 8),
+                  TextField(controller: surfaceCtrl, decoration: const InputDecoration(labelText: 'Court surface (optional)')),
+                  const SizedBox(height: 8),
+                  TextField(controller: amenitiesCtrl, decoration: const InputDecoration(labelText: 'Amenities (comma separated)', hintText: 'Parking, Shower, Changing room')),
+                  const SizedBox(height: 8),
+                  TextField(controller: policyCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Cancellation policy (optional)')),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () async {
@@ -1639,23 +1690,45 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
       return;
     }
 
+    if (galleryUrls.length + newGalleryPhotos.length > 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A venue can have at most 6 photos.')));
+      return;
+    }
+
     setState(() => _processingFacilityId = facility.id);
     try {
       final api = ref.read(apiClientProvider);
-      final response = await api
-          .patchJson('/api/facilities/owner/${facility.id}/', {
-            'name': nameCtrl.text,
-            'location_name': locationCtrl.text,
-            'sport_type': sportType,
-            'base_price_per_hour': priceCtrl.text,
-            'description': descriptionCtrl.text,
-            'contact_phone': phoneCtrl.text,
-            'opening_hours': openingHoursCtrl.text,
-            'image_url': imageUrlCtrl.text,
-            'latitude': selectedLocation.latitude,
-            'longitude': selectedLocation.longitude,
-            'is_indoor': isIndoor,
-          }, token: session.token);
+      for (final photo in newGalleryPhotos) {
+        final bytes = await photo.readAsBytes();
+        if (bytes.length > 1800 * 1024) throw Exception('${photo.name} is larger than 1.8 MB. Choose a smaller image.');
+        final extension = photo.name.split('.').last.toLowerCase();
+        final contentType = photo.mimeType ?? (extension == 'png' ? 'image/png' : extension == 'webp' ? 'image/webp' : 'image/jpeg');
+        final uploaded = await api.postJson('/api/facilities/owner/upload-image/', {
+          'file_name': photo.name,
+          'content_type': contentType,
+          'image_base64': base64Encode(bytes),
+        }, token: session.token);
+        final url = (uploaded['url'] as String? ?? '').trim();
+        if (url.isEmpty) throw Exception('The server did not return an image URL for ${photo.name}.');
+        galleryUrls.add(url);
+      }
+      final response = await api.patchJson('/api/facilities/owner/${facility.id}/', {
+        'name': nameCtrl.text.trim(),
+        'location_name': locationCtrl.text.trim(),
+        'sport_type': sportType,
+        'base_price_per_hour': priceCtrl.text,
+        'description': descriptionCtrl.text.trim(),
+        'contact_phone': phoneCtrl.text.trim(),
+        'opening_hours': openingHoursCtrl.text.trim(),
+        'gallery_image_urls': galleryUrls,
+        'website_url': websiteCtrl.text.trim(),
+        'surface_type': surfaceCtrl.text.trim(),
+        'amenities': amenitiesCtrl.text.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        'cancellation_policy': policyCtrl.text.trim(),
+        'latitude': selectedLocation.latitude,
+        'longitude': selectedLocation.longitude,
+        'is_indoor': isIndoor,
+      }, token: session.token);
       final updatedFacility = _facilityFromResponse(response);
       if (updatedFacility != null) {
         _upsertOwnerRow(updatedFacility);

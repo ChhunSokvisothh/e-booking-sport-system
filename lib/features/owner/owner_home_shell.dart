@@ -1536,8 +1536,16 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             title: const Text('Edit Venue Details'),
-            content: SingleChildScrollView(
-              child: Column(
+            content: SizedBox(
+              width: MediaQuery.sizeOf(context).width < 600
+                  ? MediaQuery.sizeOf(context).width * 0.9
+                  : 560,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
@@ -1697,6 +1705,8 @@ class _OwnerFacilitiesTabState extends ConsumerState<_OwnerFacilitiesTab> {
                         setDialogState(() => isIndoor = value),
                   ),
                 ],
+                  ),
+                ),
               ),
             ),
             actions: [

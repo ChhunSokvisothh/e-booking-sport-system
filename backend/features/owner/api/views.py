@@ -28,6 +28,21 @@ from global_utils.view_helpers import (
 )
 from global_utils.permissions import IsVenueOwner
 
+
+def _validated_gallery(raw):
+    if not isinstance(raw, list):
+        return None, 'gallery_image_urls must be a list.'
+    if len(raw) > 6:
+        return None, 'A venue can have at most 6 photos.'
+    urls = []
+    for value in raw:
+        if not isinstance(value, str) or not value.strip():
+            return None, 'Every gallery photo must have a valid image URL.'
+        url = value.strip()
+        if url not in urls:
+            urls.append(url)
+    return urls, None
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def active_coupons_endpoint(request):
@@ -280,6 +295,10 @@ def owner_facilities_endpoint(request):
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return Response({'error': 'Selected map location is outside valid coordinates.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    gallery_urls, gallery_error = _validated_gallery(request.data.get('gallery_image_urls', []))
+    if gallery_error:
+        return Response({'error': gallery_error}, status=status.HTTP_400_BAD_REQUEST)
+
     facility = Facility.objects.create(
         name=name,
         sport_type=sport_type,
@@ -293,8 +312,12 @@ def owner_facilities_endpoint(request):
         rating=Decimal('0.0'),
         contact_phone=contact_phone,
         opening_hours=opening_hours,
-        image_url=(request.data.get('image_url') or '').strip(),
-        gallery_image_urls=request.data.get('gallery_image_urls') if isinstance(request.data.get('gallery_image_urls'), list) else [],
+        image_url=(request.data.get('image_url') or (gallery_urls[0] if gallery_urls else '')).strip(),
+        gallery_image_urls=gallery_urls,
+        website_url=(request.data.get('website_url') or '').strip(),
+        surface_type=(request.data.get('surface_type') or '').strip(),
+        cancellation_policy=(request.data.get('cancellation_policy') or '').strip(),
+        amenities=request.data.get('amenities') if isinstance(request.data.get('amenities'), list) else [],
         owner_user_id=_uuid_from_user(request.user),
         is_active=True,
         archived_at=None,
@@ -377,6 +400,26 @@ def owner_facility_detail_endpoint(request, facility_id):
     if 'image_url' in request.data:
         facility.image_url = (request.data.get('image_url') or '').strip()
         update_fields.append('image_url')
+
+    if 'gallery_image_urls' in request.data:
+        gallery_urls, gallery_error = _validated_gallery(request.data.get('gallery_image_urls'))
+        if gallery_error:
+            return Response({'error': gallery_error}, status=status.HTTP_400_BAD_REQUEST)
+        facility.gallery_image_urls = gallery_urls
+        facility.image_url = gallery_urls[0] if gallery_urls else ''
+        update_fields.extend(['gallery_image_urls', 'image_url'])
+
+    for field in ('website_url', 'surface_type', 'cancellation_policy'):
+        if field in request.data:
+            setattr(facility, field, (request.data.get(field) or '').strip())
+            update_fields.append(field)
+
+    if 'amenities' in request.data:
+        amenities = request.data.get('amenities')
+        if not isinstance(amenities, list) or any(not isinstance(item, str) for item in amenities):
+            return Response({'error': 'amenities must be a list of text values.'}, status=status.HTTP_400_BAD_REQUEST)
+        facility.amenities = list(dict.fromkeys(item.strip() for item in amenities if item.strip()))
+        update_fields.append('amenities')
 
     if 'sport_type' in request.data:
         sport_type = (request.data.get('sport_type') or '').strip().lower()
